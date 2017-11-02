@@ -1,0 +1,9 @@
+*bower_components*
+*node_modules*
+.purs-*
+.psci*
+output/*
+build/*
+*.#*
+.psc-package/*
+src/Contracts/*
