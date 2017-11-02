@@ -24,7 +24,7 @@ main = do
 
   let contractAddress = Address <<< HexString $ "39e505e1518813ab3834d57d06c22b2e5a7fb9f2"
 
-  log "Hello EthereumWhite"
+  log $ "Hello EthereumWhite at " <> show contractAddress
   
   runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ liftAff $ runWeb3 $
     event contractAddress $ \(EW.Transfer _from _to _value) -> do
