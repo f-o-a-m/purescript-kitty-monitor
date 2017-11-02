@@ -4,5 +4,5 @@ arbitrary abi + ps-web3
 ## Build instructions
 ```bash
 > npm i
-> pulp test
+> NODE_URL="http://geth-mainnet-deploy.foam.svc.cluster.local:8545" pulp run 
 ```
