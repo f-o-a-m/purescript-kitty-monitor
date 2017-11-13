@@ -9,7 +9,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "psc-package": "./node_modules/.bin/psc-package update",
-    "postinstall": "npm run psc-package && rm -rf src/Contracts && pulp build -m Generator --to generator.js && node generator.js --abis abis --dest src --trufle false --prefix eth_ && rm generator.js"
+    "postinstall": "npm run psc-package && rm -rf src/Contracts && pulp build --src-path generator -m Generator --to generator.js && node generator.js --abis abis --dest src --trufle false --prefix eth_ && rm generator.js"
   },
   "author": "Kristoffer Josefsson",
   "license": "ISC",
