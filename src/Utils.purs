@@ -1,8 +1,7 @@
-module Utils where
+module Utils (MyProvider, myProvider) where
 
 import Prelude
 
-import Control.Error.Util (note)
 import Control.Monad.Aff (Aff, liftEff')
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
@@ -20,12 +19,12 @@ import Data.Lens.Index (ix)
 import Data.Maybe (maybe)
 import Data.Symbol (class IsSymbol, SProxy, reflectSymbol)
 import Network.Ethereum.Web3.Api (net_version)
-import Network.Ethereum.Web3.Provider (class IsAsyncProvider, Provider, httpProvider, runWeb3)
+import Network.Ethereum.Web3.Provider (class IsAsyncProvider, Provider, Provider, httpProvider, runWeb3)
 import Network.Ethereum.Web3.Types (Address, ETH, Web3(..))
 import Node.Encoding (Encoding(UTF8))
 import Node.FS.Aff (FS, readTextFile)
 import Node.Process (PROCESS, lookupEnv)
-
+import Type.Proxy (Proxy(..))
 
 makeProvider :: forall eff . Eff (eth :: ETH, exception :: EXCEPTION | eff) Provider
 makeProvider = unsafeCoerceEff $ do
@@ -33,8 +32,10 @@ makeProvider = unsafeCoerceEff $ do
   url <- maybe (throw "Must provide NODE_URL") pure murl
   httpProvider url
 
-data HttpProvider
+data MyProvider
 
-instance providerHttp :: IsAsyncProvider HttpProvider where
+instance providerHttp :: IsAsyncProvider MyProvider where
   getAsyncProvider = Web3 <<< liftEff' $ makeProvider
 
+myProvider :: Proxy MyProvider
+myProvider = Proxy
