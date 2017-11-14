@@ -6,8 +6,9 @@ import Contracts.BeaconFactory as BF
 import Contracts.DecentrEx as DX
 import Contracts.EthereumWhite as EW
 import Contracts.LightOracle as LO
+import Contracts.OmiseGo as OG
 import Control.Monad (class Monad)
-import Control.Monad.Aff (Aff, attempt, runAff_)
+import Control.Monad.Aff (Aff, attempt, launchAff, launchAff_, runAff_)
 import Control.Monad.Aff.AVar (makeEmptyVar, putVar, takeVar)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
@@ -16,8 +17,10 @@ import Control.Monad.Eff.Console (CONSOLE, log, logShow)
 import Control.Monad.Eff.Unsafe (unsafePerformEff)
 import Control.Monad.Reader (ReaderT(..))
 import Data.Either (Either(..), either)
+import Data.Foldable (sequence_)
 import Data.Maybe (fromJust)
-import Network.Ethereum.Web3 (Change(..), httpProvider, mkAddress, mkHexString, runWeb3)
+import Data.Traversable (for, for_)
+import Network.Ethereum.Web3 (class IsAsyncProvider, Change(..), ETH, Web3, httpProvider, mkAddress, mkHexString, runWeb3)
 import Network.Ethereum.Web3.Contract (EventAction(..), event)
 import Network.Ethereum.Web3.Provider (runWeb3)
 import Network.Ethereum.Web3.Types (Web3)
@@ -25,67 +28,97 @@ import Partial.Unsafe (unsafePartial)
 import Type.Proxy (Proxy(..))
 import Utils (myProvider)
 
-main = do
-  log "hello event monitor"
---  foam
---  lightOracle
-  decentrEx
---  ethereumWhite
+main :: Eff (console :: CONSOLE, eth :: ETH) Unit
+main = launchAff_ $ do
+  liftEff $ log "hello event monitor"
+  for events \e -> do
+    spork e myProvider
+  where
+    events =
+      [ omiseGo
+      , foam
+      , lightOracle
+      , decentrEx
+      , ethereumWhite
+      ]
+
+type EventLog = forall p aff . (IsAsyncProvider p) => Web3 p (console :: CONSOLE | aff) Unit
+
+spork theEvent provider = do
+  res <- attempt $ runWeb3 provider $ do
+    theEvent
+  case res of
+    Left e -> do
+      liftEff $ log "geth fucked up"
+      spork theEvent provider
+    Right a -> do
+      liftEff $ log "i'm supposedly happy"
 
 logEvent :: forall proxy a b c
-       . (Show a)
-      => (Monad c)
-      => proxy a -> a -> ReaderT b c EventAction
+          . (Show a)
+         => (Monad c)
+         => proxy a -> a -> ReaderT b c EventAction
 logEvent _ e = do
         void $ pure $ unsafePerformEff $ log $ "logEvent: " <> show e
         pure ContinueEvent
 
 -- mainnet
+ethereumWhite :: EventLog
 ethereumWhite = do
   let ewAddress = unsafePartial fromJust $ mkAddress =<< mkHexString  "39e505e1518813ab3834d57d06c22b2e5a7fb9f2"
-  void <<< runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do 
-    liftEff $ log $ "Hello EthereumWhite at " <> show ewAddress
-    runWeb3 myProvider $ do
-      void <<< event ewAddress $ (logEvent $ Proxy :: Proxy EW.Transfer)
-      void <<< event ewAddress $ (logEvent $ Proxy :: Proxy EW.Mine)
-      void <<< event ewAddress $ (logEvent $ Proxy :: Proxy EW.MinePoS)
-      void <<< event ewAddress $ (logEvent $ Proxy :: Proxy EW.MineAD)
-      void <<< event ewAddress $ (logEvent $ Proxy :: Proxy EW.Approval)
-      event ewAddress $ (logEvent $ Proxy :: Proxy EW.SponsoredLink)
+  liftEff $ log $ "Hello EthereumWhite at " <> show ewAddress
+  sequence_
+    [ event ewAddress $ (logEvent $ Proxy :: Proxy EW.Transfer)
+    , event ewAddress $ (logEvent $ Proxy :: Proxy EW.Mine)
+    , event ewAddress $ (logEvent $ Proxy :: Proxy EW.MinePoS)
+    , event ewAddress $ (logEvent $ Proxy :: Proxy EW.MineAD)
+    , event ewAddress $ (logEvent $ Proxy :: Proxy EW.Approval)
+    , event ewAddress $ (logEvent $ Proxy :: Proxy EW.SponsoredLink)
+    ]
 
 -- rinkeby
+foam :: EventLog
 foam = do
-  let foamAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "9a812f42997Bf6584723053f94c68b0e0Bdaf874"
-  runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do
-    liftEff $ log $ "Hello FOAM at " <> show foamAddress
-    runWeb3 myProvider $ do
-      event foamAddress $ (logEvent $ Proxy :: Proxy BF.DeployedBeacon)
+  let foamAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "f665d4a1b6f8d9aca484d92b47f94a0764175fbf"
+  liftEff $ log $ "Hello FOAM at " <> show foamAddress
+  sequence_ $ [event foamAddress $ (logEvent $ Proxy :: Proxy BF.DeployedBeacon)]
 
 -- ropsten
+lightOracle :: EventLog
 lightOracle = do
   let loAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x874c72F8FfC0E3167b17E1a553C6Af4E2E9E9fB1"
-  runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do
-    liftEff $ log $ "Hello LightOracle at " <> show loAddress
-    runWeb3 myProvider $ do
-      void <<< event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
-      event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
+  liftEff $ log $ "Hello LightOracle at " <> show loAddress
+  sequence_ 
+    [ event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
+    , event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
+    ]
+ 
+-- mainnet
+omiseGo :: EventLog 
+omiseGo = do
+  let ogAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "d26114cd6EE289AccF82350c8d8487fedB8A0C07"
+  liftEff $ log $ "Hello OmiseGo at " <> show ogAddress
+  sequence_
+    [ event ogAddress $ (logEvent $ Proxy :: Proxy OG.Transfer)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Approval)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Mint)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.MintFinished)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Pause)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Unpause)
+    ]
 
 -- mainnet
+decentrEx :: EventLog
 decentrEx = do
   let dxAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "bf29685856fae1e228878dfb35b280c0adcc3b05"
-  void <<< runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do 
-    liftEff $ log $ "Hello DecentrEx at " <> show dxAddress
-    res <- attempt <<< runWeb3 myProvider $ do
-      void <<< event dxAddress $ (logEvent $ Proxy :: Proxy DX.Trade)
-      void <<< event dxAddress $ (logEvent $ Proxy :: Proxy DX.Trade)
-      void <<< event dxAddress $ (logEvent $ Proxy :: Proxy DX.Order)
-      void <<< event dxAddress $ (logEvent $ Proxy :: Proxy DX.Cancel)
-      void <<< event dxAddress $ (logEvent $ Proxy :: Proxy DX.Deposit)
-      event dxAddress $ (logEvent $ Proxy :: Proxy DX.Withdraw)
-    case res of
-      Left e -> do
-        liftEff $ log "geth is not responding properly, retrying..."
-        liftEff $ decentrEx
-      Right a -> do
-        liftEff $ log "can't happen"
-        liftEff $ decentrEx
+  liftEff $ log $ "Hello DecentrEx at " <> show dxAddress
+  sequence_
+    [ event dxAddress $ (logEvent $ Proxy :: Proxy DX.Trade)
+    , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Trade)
+    , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Order)
+    , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Cancel)
+    , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Deposit)
+    , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Withdraw)
+    ]
+
+  
