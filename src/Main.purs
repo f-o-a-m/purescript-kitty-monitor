@@ -25,16 +25,20 @@ import Partial.Unsafe (unsafePartial)
 import Type.Proxy (Proxy(..))
 import Utils (myProvider)
 
--- main :: forall e. Eff ( console :: CONSOLE
---                       , eth :: ETH 
---                       | e
---                       ) Unit
 main = do
   log "hello event monitor"
 --  foam
 --  lightOracle
   decentrEx
 --  ethereumWhite
+
+logEvent :: forall proxy a b c
+       . (Show a)
+      => (Monad c)
+      => proxy a -> a -> ReaderT b c EventAction
+logEvent _ e = do
+        void $ pure $ unsafePerformEff $ log $ "logEvent: " <> show e
+        pure ContinueEvent
 
 ethereumWhite = do
   let ewAddress = unsafePartial fromJust $ mkAddress =<< mkHexString  "39e505e1518813ab3834d57d06c22b2e5a7fb9f2"
@@ -62,14 +66,6 @@ lightOracle = do
     runWeb3 myProvider $ do
       void <<< event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
       event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
-
-logEvent :: forall proxy a b c
-       . (Show a)
-      => (Monad c)
-      => proxy a -> a -> ReaderT b c EventAction
-logEvent _ e = do
-        void $ pure $ unsafePerformEff $ log $ "logEvent: " <> show e
-        pure ContinueEvent
 
 decentrEx = do
   let dxAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "bf29685856fae1e228878dfb35b280c0adcc3b05"
