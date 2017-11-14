@@ -40,6 +40,7 @@ logEvent _ e = do
         void $ pure $ unsafePerformEff $ log $ "logEvent: " <> show e
         pure ContinueEvent
 
+-- mainnet
 ethereumWhite = do
   let ewAddress = unsafePartial fromJust $ mkAddress =<< mkHexString  "39e505e1518813ab3834d57d06c22b2e5a7fb9f2"
   void <<< runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do 
@@ -52,6 +53,7 @@ ethereumWhite = do
       void <<< event ewAddress $ (logEvent $ Proxy :: Proxy EW.Approval)
       event ewAddress $ (logEvent $ Proxy :: Proxy EW.SponsoredLink)
 
+-- rinkeby
 foam = do
   let foamAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "9a812f42997Bf6584723053f94c68b0e0Bdaf874"
   runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do
@@ -59,6 +61,7 @@ foam = do
     runWeb3 myProvider $ do
       event foamAddress $ (logEvent $ Proxy :: Proxy BF.DeployedBeacon)
 
+-- ropsten
 lightOracle = do
   let loAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x874c72F8FfC0E3167b17E1a553C6Af4E2E9E9fB1"
   runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do
@@ -67,6 +70,7 @@ lightOracle = do
       void <<< event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
       event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
 
+-- mainnet
 decentrEx = do
   let dxAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "bf29685856fae1e228878dfb35b280c0adcc3b05"
   void <<< runAff_ (\e -> log $ either show (\_ -> "i'm back") e) $ do 
