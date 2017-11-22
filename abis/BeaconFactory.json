@@ -1,0 +1,69 @@
+[
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_geohash",
+        "type": "bytes8"
+      },
+      {
+        "name": "_name",
+        "type": "string"
+      }
+    ],
+    "name": "deployBeacon",
+    "outputs": [],
+    "payable": false,
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "factoryCSR",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "name": "_factoryCSR",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "_name",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "name": "_beaconAddress",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_factoryAddress",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "_geohash",
+        "type": "bytes8"
+      }
+    ],
+    "name": "DeployedBeacon",
+    "type": "event"
+  }
+]

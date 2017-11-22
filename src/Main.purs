@@ -7,7 +7,7 @@ import Contracts.DecentrEx as DX
 import Contracts.EthereumWhite as EW
 import Contracts.LightOracle as LO
 import Contracts.OmiseGo as OG
-import Control.Monad.Aff (attempt, launchAff_)
+import Control.Monad.Aff (Aff, attempt, launchAff_)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, log)
@@ -33,31 +33,34 @@ main = launchAff_ $ do
   where
     events =
       [ omiseGo
-      , foam
-      , lightOracle
-      , decentrEx
-      , ethereumWhite
+      --, foam
+      --, lightOracle
+      --, decentrEx
+      --, ethereumWhite
       ]
 
 type EventLog = forall p aff . (IsAsyncProvider p) => Web3 p (console :: CONSOLE | aff) Unit
 
+spork :: forall p aff b
+       . Web3 p (console :: CONSOLE | aff) b
+      -> Proxy p
+      -> Aff (eth :: ETH, console :: CONSOLE | aff) Unit
 spork theEvent provider = do
   res <- attempt $ runWeb3 provider $ do
     theEvent
   case res of
     Left e -> do
-      liftEff $ log "geth fucked up"
+      liftEff $ log "JSON-RPC returned empty string"
       spork theEvent provider
     Right a -> do
-      liftEff $ log "i'm supposedly happy"
+      liftEff $ log "got proper response from JSON-RPC"
+      -- spork theEvent provider
 
 logEvent :: forall proxy a b c
           . (Show a)
          => (Monad c)
          => proxy a -> a -> ReaderT b c EventAction
-logEvent _ e = do
-        void $ pure $ unsafePerformEff $ log $ "logEvent: " <> show e
-        pure ContinueEvent
+logEvent _ e = pure $ unsafePerformEff $ (log $ "logEvent: " <> show e) >>= (const $ pure ContinueEvent)
 
 -- mainnet
 ethereumWhite :: EventLog
@@ -85,24 +88,36 @@ lightOracle :: EventLog
 lightOracle = do
   let loAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x874c72F8FfC0E3167b17E1a553C6Af4E2E9E9fB1"
   liftEff $ log $ "Hello LightOracle at " <> show loAddress
-  sequence_ 
+  sequence_
     [ event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
     , event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
     ]
- 
+
 -- mainnet
-omiseGo :: EventLog 
+omiseGo :: EventLog
 omiseGo = do
   let ogAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "d26114cd6EE289AccF82350c8d8487fedB8A0C07"
   liftEff $ log $ "Hello OmiseGo at " <> show ogAddress
-  sequence_
-    [ event ogAddress $ (logEvent $ Proxy :: Proxy OG.Transfer)
-    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Approval)
-    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Mint)
-    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.MintFinished)
-    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Pause)
-    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Unpause)
-    ]
+--  sequence_ -- i think i know what it is
+--    [ event ogAddress $ (logEvent $ Proxy :: Proxy OG.Transfer)
+--    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Approval)
+--    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Mint)
+--    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.MintFinished)
+--    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Pause)
+--    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Unpause)
+--    ]
+
+  _ <- event ogAddress $ \(e@OG.Transfer _ _ _) -> do
+    _ <- liftEff <<< log $ "OG.Transfer: " <> show e
+    pure ContinueEvent
+
+--       event Config.config.simpleStorageAddress $ \(SimpleStorage.NewCount _count) -> do
+--         _ <- liftEff <<< R.transformState this $ _{currentCount= show _count}
+--         liftEff $ props.statusCallback "Transaction succeded, enter new count."
+--         pure ContinueEvent
+
+
+  liftEff $ log $ "Bye OmiseGo at " <> show ogAddress
 
 -- mainnet
 decentrEx :: EventLog
@@ -117,5 +132,3 @@ decentrEx = do
     , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Deposit)
     , event dxAddress $ (logEvent $ Proxy :: Proxy DX.Withdraw)
     ]
-
-  
