@@ -1,6 +1,6 @@
 {
     "name": "foam.monitor",
-    "set": "master",
+    "set": "better-tuples",
     "source": "https://github.com/f-o-a-m/package-sets.git",
     "depends": [
         "prelude",
@@ -15,6 +15,7 @@
         "spec",
         "psci-support",
         "web3",
-        "web3-generator"
+        "web3-generator",
+        "tagged"
     ]
 }

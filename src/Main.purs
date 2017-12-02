@@ -54,7 +54,6 @@ spork theEvent provider = do
       spork theEvent provider
     Right a -> do
       liftEff $ log "got proper response from JSON-RPC"
-      -- spork theEvent provider
 
 logEvent :: forall proxy a b c
           . (Show a)
@@ -98,24 +97,14 @@ omiseGo :: EventLog
 omiseGo = do
   let ogAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "d26114cd6EE289AccF82350c8d8487fedB8A0C07"
   liftEff $ log $ "Hello OmiseGo at " <> show ogAddress
---  sequence_ -- i think i know what it is
---    [ event ogAddress $ (logEvent $ Proxy :: Proxy OG.Transfer)
---    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Approval)
---    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Mint)
---    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.MintFinished)
---    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Pause)
---    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Unpause)
---    ]
-
-  _ <- event ogAddress $ \(e@OG.Transfer _ _ _) -> do
-    _ <- liftEff <<< log $ "OG.Transfer: " <> show e
-    pure ContinueEvent
-
---       event Config.config.simpleStorageAddress $ \(SimpleStorage.NewCount _count) -> do
---         _ <- liftEff <<< R.transformState this $ _{currentCount= show _count}
---         liftEff $ props.statusCallback "Transaction succeded, enter new count."
---         pure ContinueEvent
-
+  sequence_ -- i think i know what it is
+    [ event ogAddress $ (logEvent $ Proxy :: Proxy OG.Transfer)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Approval)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Mint)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.MintFinished)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Pause)
+    , event ogAddress $ (logEvent $ Proxy :: Proxy OG.Unpause)
+    ]
 
   liftEff $ log $ "Bye OmiseGo at " <> show ogAddress
 

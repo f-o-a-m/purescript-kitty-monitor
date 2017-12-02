@@ -9,16 +9,17 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "psc-package": "./node_modules/.bin/psc-package update",
-    "postinstall": "npm run psc-package && rm -rf src/Contracts && pulp build --src-path generator -m Generator --to generator.js && node generator.js --abis abis --dest src --trufle false --prefix eth_ && rm generator.js"
+    "postinstall": "npm run psc-package && rm -rf src/Contracts && ./node_modules/.bin/pulp build --src-path generator -m Generator --to generator.js && node generator.js --abis abis --dest src --trufle false --prefix eth_ && rm generator.js"
   },
   "author": "Kristoffer Josefsson",
   "license": "ISC",
   "dependencies": {
     "bignumber.js": "git+https://github.com/frozeman/bignumber.js-nolookahead.git",
     "crypto-js": "^3.1.8",
-    "pulp": "^12.0.0",
     "psc-package": "^0.2.4-rc1",
-    "yargs": "^8.0.2",
-    "web3": "^0.19.0"
+    "pulp": "^12.0.0",
+    "purs": "0.0.9",
+    "web3": "^0.19.0",
+    "yargs": "^8.0.2"
   }
 }
