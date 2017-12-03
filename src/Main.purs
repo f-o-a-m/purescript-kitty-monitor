@@ -3,13 +3,14 @@ module Main where
 import Prelude
 
 import Contracts.BeaconFactory as BF
+import Contracts.CryptoKitties as CK
 import Contracts.DecentrEx as DX
+import Contracts.ERC721 as T
 import Contracts.EthereumWhite as EW
 import Contracts.LightOracle as LO
 import Contracts.OmiseGo as OG
-import Contracts.CryptoKitties as CK
-
 import Control.Monad.Aff (Aff, attempt, launchAff_)
+import Control.Monad.Cont.Trans (lift)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, log)
@@ -17,9 +18,9 @@ import Control.Monad.Eff.Unsafe (unsafePerformEff)
 import Control.Monad.Reader (ReaderT)
 import Data.Either (Either(Right, Left))
 import Data.Foldable (sequence_)
-import Data.Maybe (fromJust)
+import Data.Maybe (Maybe(..), fromJust)
 import Data.Traversable (for)
-import Network.Ethereum.Web3 (class IsAsyncProvider, ETH, mkAddress, mkHexString)
+import Network.Ethereum.Web3 (class IsAsyncProvider, CallMode(..), ETH, embed, mkAddress, mkHexString, uIntNFromBigNumber)
 import Network.Ethereum.Web3.Contract (EventAction(..), event)
 import Network.Ethereum.Web3.Provider (runWeb3)
 import Network.Ethereum.Web3.Types (Web3)
@@ -69,19 +70,19 @@ cryptoKitties :: EventLog
 cryptoKitties = do
   let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xC7af99Fe5513eB6710e6D5f44F9989dA40F27F26"
   liftEff $ log $ "Hello CryptoKitties at " <> show ckAddress
+  aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
 
   sequence_
     [ event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCreated)
     , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionSuccessful)
     , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCancelled)
-    --, event ckAddress $ (logEvent $ Proxy :: Proxy CK.Transfer)
-    --, event ckAddress $ (logEvent $ Proxy :: Proxy CK.Approval)
     , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Pause)
     , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Unpause)
+    , event aaAddress $ (logEvent $ Proxy :: Proxy T.Transfer)
+    , event aaAddress $ (logEvent $ Proxy :: Proxy T.Approval)
     ]
 
   liftEff $ log $ "Bye CryptoKitties at " <> show ckAddress
-
 
 -- mainnet
 ethereumWhite :: EventLog
