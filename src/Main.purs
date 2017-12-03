@@ -7,6 +7,8 @@ import Contracts.DecentrEx as DX
 import Contracts.EthereumWhite as EW
 import Contracts.LightOracle as LO
 import Contracts.OmiseGo as OG
+import Contracts.CryptoKitties as CK
+
 import Control.Monad.Aff (Aff, attempt, launchAff_)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
@@ -32,11 +34,12 @@ main = launchAff_ $ do
     spork e myProvider
   where
     events =
-      [ omiseGo
-      --, foam
-      --, lightOracle
-      --, decentrEx
-      --, ethereumWhite
+      [ cryptoKitties
+--      , omiseGo
+--      , ethereumWhite
+--      , foam
+--      , lightOracle
+--      , decentrEx
       ]
 
 type EventLog = forall p aff . (IsAsyncProvider p) => Web3 p (console :: CONSOLE | aff) Unit
@@ -62,6 +65,25 @@ logEvent :: forall proxy a b c
 logEvent _ e = pure $ unsafePerformEff $ (log $ "logEvent: " <> show e) >>= (const $ pure ContinueEvent)
 
 -- mainnet
+cryptoKitties :: EventLog
+cryptoKitties = do
+  let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xC7af99Fe5513eB6710e6D5f44F9989dA40F27F26"
+  liftEff $ log $ "Hello CryptoKitties at " <> show ckAddress
+
+  sequence_
+    [ event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCreated)
+    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionSuccessful)
+    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCancelled)
+    --, event ckAddress $ (logEvent $ Proxy :: Proxy CK.Transfer)
+    --, event ckAddress $ (logEvent $ Proxy :: Proxy CK.Approval)
+    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Pause)
+    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Unpause)
+    ]
+
+  liftEff $ log $ "Bye CryptoKitties at " <> show ckAddress
+
+
+-- mainnet
 ethereumWhite :: EventLog
 ethereumWhite = do
   let ewAddress = unsafePartial fromJust $ mkAddress =<< mkHexString  "39e505e1518813ab3834d57d06c22b2e5a7fb9f2"
@@ -73,23 +95,6 @@ ethereumWhite = do
     , event ewAddress $ (logEvent $ Proxy :: Proxy EW.MineAD)
     , event ewAddress $ (logEvent $ Proxy :: Proxy EW.Approval)
     , event ewAddress $ (logEvent $ Proxy :: Proxy EW.SponsoredLink)
-    ]
-
--- rinkeby
-foam :: EventLog
-foam = do
-  let foamAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "f665d4a1b6f8d9aca484d92b47f94a0764175fbf"
-  liftEff $ log $ "Hello FOAM at " <> show foamAddress
-  sequence_ $ [event foamAddress $ (logEvent $ Proxy :: Proxy BF.DeployedBeacon)]
-
--- ropsten
-lightOracle :: EventLog
-lightOracle = do
-  let loAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x874c72F8FfC0E3167b17E1a553C6Af4E2E9E9fB1"
-  liftEff $ log $ "Hello LightOracle at " <> show loAddress
-  sequence_
-    [ event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
-    , event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
     ]
 
 -- mainnet
@@ -107,6 +112,24 @@ omiseGo = do
     ]
 
   liftEff $ log $ "Bye OmiseGo at " <> show ogAddress
+
+
+-- rinkeby
+foam :: EventLog
+foam = do
+  let foamAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "f665d4a1b6f8d9aca484d92b47f94a0764175fbf"
+  liftEff $ log $ "Hello FOAM at " <> show foamAddress
+  sequence_ $ [event foamAddress $ (logEvent $ Proxy :: Proxy BF.DeployedBeacon)]
+
+-- ropsten
+lightOracle :: EventLog
+lightOracle = do
+  let loAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x874c72F8FfC0E3167b17E1a553C6Af4E2E9E9fB1"
+  liftEff $ log $ "Hello LightOracle at " <> show loAddress
+  sequence_
+    [ event loAddress $ (logEvent $ Proxy :: Proxy LO.RateDelivered)
+    , event loAddress $ (logEvent $ Proxy :: Proxy LO.NewSymbol)
+    ]
 
 -- mainnet
 decentrEx :: EventLog
