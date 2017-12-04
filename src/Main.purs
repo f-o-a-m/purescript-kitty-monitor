@@ -2,42 +2,28 @@ module Main where
 
 import Prelude
 
-
-import Prelude
+import Contracts.CryptoKitties as CK
+import Contracts.KittyCore as KC
+import Control.Monad.Aff (Milliseconds(..), delay, launchAff, liftEff')
 import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Class (liftEff)
 import DOM (DOM)
 import DOM.HTML (window)
 import DOM.HTML.Types (htmlDocumentToDocument)
 import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
-import Data.Maybe (fromJust)
+import Data.Array (cons, fold)
+import Data.Lens (Lens', Prism', lens, prism', over)
+import Data.List (List(..))
+import Data.Maybe (Maybe(..), fromJust)
+import Data.Tuple (Tuple(..), uncurry)
+import Network.Ethereum.Web3 (CallMode(..), ETH, EventAction(..), event, metamask, mkAddress, mkHexString, runWeb3)
 import Partial.Unsafe (unsafePartial)
 import React as R
 import React.DOM as D
 import ReactDOM (render)
-
---import Contracts.BeaconFactory as BF
---import Contracts.CryptoKitties as CK
---import Contracts.DecentrEx as DX
---import Contracts.ERC721 as T
---import Contracts.EthereumWhite as EW
---import Contracts.KittyCore as KC
---import Contracts.LightOracle as LO
---import Contracts.OmiseGo as OG
---import Control.Monad.Aff (Aff, attempt, launchAff_)
---import Control.Monad.Cont.Trans (lift)
---import Control.Monad.Eff (Eff)
---import Control.Monad.Eff.Class (liftEff)
---import Control.Monad.Eff.Console (CONSOLE, log)
---import Control.Monad.Eff.Unsafe (unsafePerformEff)
---import Control.Monad.Reader (ReaderT)
---import Control.Monad.Reader.Class (ask)
---import Data.Either (Either(Right, Left))
---import Data.Foldable (sequence_)
---import Data.Maybe (Maybe(..), fromJust)
---import Data.Traversable (for)
---import Network.Ethereum.Web3 (class IsAsyncProvider, CallMode(..), Change(..), ETH, fromHexString, mkAddress, mkHexString)
+import Thermite as T
 --import Network.Ethereum.Web3.Contract (EventAction(..), event)
 --import Network.Ethereum.Web3.Provider (runWeb3)
 --import Network.Ethereum.Web3.Types (Web3)
@@ -64,6 +50,8 @@ type KittyState = Unit
 
 type KittyProps = Unit
 
+type KittenAction = Unit
+
 appSpec :: forall eff . R.ReactSpec KittyProps KittyState eff
 appSpec = R.spec unit render
   where
@@ -72,34 +60,64 @@ appSpec = R.spec unit render
 appClass :: R.ReactClass KittyProps
 appClass = R.createClass appSpec
 
---type EventLog = forall p aff . (IsAsyncProvider p) => Web3 p (console :: CONSOLE | aff) Unit
---
---
----- mainnet
---cryptoKitties :: EventLog
---cryptoKitties = do
---  let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xC7af99Fe5513eB6710e6D5f44F9989dA40F27F26"
---  aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
---
---  liftEff <<< log $ "Hello CryptoKitties at " <> show ckAddress
---  liftEff <<< log $ "ERC721 is at " <> show aaAddress
---
---  sequence_
---    [ event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCreated)
---    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionSuccessful)
---    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCancelled)
---    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Pause)
---    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Unpause)
---   -- , event aaAddress $ (logEvent $ Proxy :: Proxy T.Transfer)
---    , event aaAddress $ (logEvent $ Proxy :: Proxy T.Approval)
---    ]
---
---  _ <- event aaAddress $ \(e@KC.Transfer r) -> do
---    (Change change) <- ask
---    liftEff <<< log $ "logEvent: " <> show e
---    let blockNum = BlockNumber $ fromHexString change.blockNumber
---    tokens <- lift $ T.eth_balanceOf aaAddress Nothing blockNum r.to
---    liftEff <<< log $ "\tTokens for " <> show r.to <> " is " <> show tokens
---    pure ContinueEvent
---
---  liftEff $ log $ "Bye CryptoKitties at " <> show ckAddress
+
+--------------------------------------------------------------------------------
+
+transferSpec :: forall eff props . T.Spec eff KC.Transfer props KittenAction
+transferSpec = T.simpleSpec T.defaultPerformAction render
+  where
+    render :: T.Render KC.Transfer props KittenAction
+    render _ props (KC.Transfer transfer) _ =
+      [ D.div [] [ D.text $ "to" <> show transfer.to
+                 , D.text $ "from" <> show transfer.from
+                 , D.text $ "tokenId" <> show transfer.tokenId
+                 ]
+      ]
+
+type TransferListState =
+  { transfers :: List KC.Transfer
+  }
+
+
+data TransferListAction = KittenAction Int KittenAction
+
+_TransferListAction :: Prism' TransferListAction (Tuple Int KittenAction)
+_TransferListAction = prism' (uncurry KittenAction) \ta ->
+  case ta of
+    KittenAction i a -> Just (Tuple i a)
+
+_transfers :: Lens' TransferListState (List KC.Transfer)
+_transfers = lens _.transfers (_ { transfers = _ })
+
+transferListSpec :: forall eff props action. T.Spec eff TransferListState props TransferListAction
+transferListSpec = fold
+    [ cardList $ T.withState  \st ->
+        T.focus _transfers _TransferListAction $
+          T.foreach \_ -> transferSpec
+    ]
+  where
+    cardList :: T.Spec eff TransferListState props TransferListAction
+             -> T.Spec eff TransferListState props TransferListAction
+    cardList = over T._render \render dispatch p s c ->
+      [ D.div [] $
+        render dispatch p s c
+      ]
+    listActions :: T.Spec eff TransferListState props TransferListAction
+    listActions = T.simpleSpec T.defaultPerformAction T.defaultRender
+
+kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH | eff)
+kittyTransfersSpec =
+    let {spec} = T.createReactSpec transferListSpec (const $ pure {transfers: Nil})
+    in spec {componentDidMount = monitorKitties}
+  where
+    monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH | eff)
+    monitorKitties this = void $ do
+      props <- R.getProps this
+      launchAff $ do
+        delay (Milliseconds 1000.0)
+        void $ runWeb3 metamask $ do
+          let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xC7af99Fe5513eB6710e6D5f44F9989dA40F27F26"
+          aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
+          event aaAddress $ \e@(KC.Transfer _) -> do
+            _ <- liftEff <<< R.transformState this $ \st -> st {transfers = Cons e st.transfers }
+            pure ContinueEvent
