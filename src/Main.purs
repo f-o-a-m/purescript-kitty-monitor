@@ -13,7 +13,7 @@ import DOM.HTML.Types (htmlDocumentToDocument)
 import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
-import Data.Array (cons, fold)
+import Data.Array (fold)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..))
 import Data.Maybe (Maybe(..), fromJust)
@@ -24,12 +24,6 @@ import React as R
 import React.DOM as D
 import ReactDOM (render)
 import Thermite as T
---import Network.Ethereum.Web3.Contract (EventAction(..), event)
---import Network.Ethereum.Web3.Provider (runWeb3)
---import Network.Ethereum.Web3.Types (Web3)
---import Partial.Unsafe (unsafePartial)
---import Type.Proxy (Proxy(..))
---import Utils (myProvider)
 
 main :: forall eff. Eff (dom :: DOM | eff) Unit
 main = void (elm' >>= render ui)
@@ -52,14 +46,8 @@ type KittyProps = Unit
 
 type KittenAction = Unit
 
-appSpec :: forall eff . R.ReactSpec KittyProps KittyState eff
-appSpec = R.spec unit render
-  where
-    render _ = pure $ D.text "hello"
-
 appClass :: R.ReactClass KittyProps
-appClass = R.createClass appSpec
-
+appClass = R.createClass kittyTransfersSpec
 
 --------------------------------------------------------------------------------
 
