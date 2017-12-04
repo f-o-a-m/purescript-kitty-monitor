@@ -22,6 +22,7 @@ import Network.Ethereum.Web3 (CallMode(..), ETH, EventAction(..), event, metamas
 import Partial.Unsafe (unsafePartial)
 import React as R
 import React.DOM as D
+import React.DOM.Props as P
 import ReactDOM (render)
 import Thermite as T
 
@@ -59,8 +60,12 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
       [ D.div [] [ D.text $ "to" <> show transfer.to
                  , D.text $ "from" <> show transfer.from
                  , D.text $ "tokenId" <> show transfer.tokenId
+                 , D.object [ P._type "image/svg+xml"
+                            , P.unsafeMkProps "data" $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> show transfer.tokenId <> ".svg"
+                            ] []
                  ]
       ]
+
 
 type TransferListState =
   { transfers :: List KC.Transfer
