@@ -12,7 +12,7 @@ install:
   - npm install -g bower
   - npm install
 script:
-  - npm run webpack 
+  - npm run webpack
 
 deploy:
   provider: pages
