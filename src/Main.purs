@@ -4,7 +4,7 @@ import Prelude
 
 import Contracts.CryptoKitties as CK
 import Contracts.KittyCore as KC
-import Control.Monad.Aff (Milliseconds(..), delay, launchAff, liftEff')
+import Control.Monad.Aff (Milliseconds(..), delay, launchAff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
@@ -18,7 +18,7 @@ import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold)
 import Data.Lens (Lens', Prism', lens, prism', over)
-import Data.List (List(..), length, take, unsnoc)
+import Data.List (List(..), length, unsnoc)
 import Data.Maybe (Maybe(..), fromJust)
 import Data.Tuple (Tuple(..), uncurry)
 import Network.Ethereum.Web3 (Address, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3)
@@ -126,6 +126,7 @@ kittyTransfersSpec =
         void $ runWeb3 metamask $ do
           let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xC7af99Fe5513eB6710e6D5f44F9989dA40F27F26"
           aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
+          liftEff $ log "starting kitty watcher..."
           event aaAddress $ \(KC.Transfer t) -> do
             liftAff $ delay (Milliseconds 15000.0)
             liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
@@ -142,3 +143,5 @@ kittyTransfersSpec =
                         else (unsafePartial fromJust $ unsnoc st.transfers).init
             _ <- liftEff <<< R.transformState this $ \st -> st {transfers = Cons ev $ st' }
             pure ContinueEvent
+
+
