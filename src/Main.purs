@@ -16,14 +16,14 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Eff.Unsafe (unsafePerformEff)
-import Control.Monad.Reader (ReaderT)
+import Control.Monad.Reader (ReaderT, ask)
 import Control.Monad.Reader.Class (ask)
 import Data.Either (Either(Right, Left))
 import Data.Foldable (sequence_)
 import Data.Maybe (Maybe(..), fromJust)
 import Data.Traversable (for)
 import Network.Ethereum.Web3 (class IsAsyncProvider, CallMode(..), Change(..), ETH, fromHexString, mkAddress, mkHexString)
-import Network.Ethereum.Web3.Contract (EventAction(..), event)
+import Network.Ethereum.Web3.Contract (EventAction(..), event, eventPar)
 import Network.Ethereum.Web3.Provider (runWeb3)
 import Network.Ethereum.Web3.Types (Web3)
 import Partial.Unsafe (unsafePartial)
@@ -76,21 +76,19 @@ cryptoKitties = do
   liftEff <<< log $ "Hello CryptoKitties at " <> show ckAddress
   liftEff <<< log $ "ERC721 is at " <> show aaAddress 
 
-  sequence_
-    [ event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCreated)
-    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionSuccessful)
-    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCancelled)
-    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Pause)
-    , event ckAddress $ (logEvent $ Proxy :: Proxy CK.Unpause)
-   -- , event aaAddress $ (logEvent $ Proxy :: Proxy T.Transfer)
-    , event aaAddress $ (logEvent $ Proxy :: Proxy T.Approval)
-    ]
+  void $ (eventPar ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCreated))
+  void $ (eventPar ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCreated))
+  void $ (eventPar ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionSuccessful))
+  void $ (eventPar ckAddress $ (logEvent $ Proxy :: Proxy CK.AuctionCancelled))
+  void $ (eventPar ckAddress $ (logEvent $ Proxy :: Proxy CK.Pause))
+  void $ (eventPar ckAddress $ (logEvent $ Proxy :: Proxy CK.Unpause))
+  void $ (eventPar aaAddress $ (logEvent $ Proxy :: Proxy T.Approval))
 
   _ <- event aaAddress $ \(e@KC.Transfer r) -> do
     (Change change) <- ask
     liftEff <<< log $ "logEvent: " <> show e
     let blockNum = BlockNumber $ fromHexString change.blockNumber
-    tokens <- lift $ T.eth_balanceOf aaAddress Nothing blockNum r.to
+    tokens  <- lift $ T.eth_balanceOf aaAddress Nothing blockNum r.to
     liftEff <<< log $ "\tTokens for " <> show r.to <> " is " <> show tokens
     pure ContinueEvent
 

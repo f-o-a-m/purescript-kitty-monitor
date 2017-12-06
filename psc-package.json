@@ -16,6 +16,7 @@
         "psci-support",
         "web3",
         "web3-generator",
-        "tagged"
+        "tagged",
+        "affjax"
     ]
 }
