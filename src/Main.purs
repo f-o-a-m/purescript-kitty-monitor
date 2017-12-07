@@ -60,19 +60,30 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render Kitten props KittenAction
     render _ props transfer _ =
-      [ D.div [] [ D.div [] [D.text $ "to: " <> show transfer.to]
-                 , D.div [] [D.text $ "from: " <> show transfer.from]
-                 , D.div [] [D.text $ "tokenId: " <> show transfer.tokenId]
-                 , D.div [] [D.text $ "transactionHash: " <> show transfer.txHash]
-                 , D.div [] [D.text $ "blockNumber: " <> show transfer.blockNumber]
-                 , D.object [ P._type "image/svg+xml"
-                            , P.width "500px"
-                            , P.height "500px"
-                            , P.unsafeMkProps "data" $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> transfer.tokenId <> ".svg"
-                            ] []
-                 ]
-      ]
-
+      [ D.div [P.className "kitty-tile"]
+        [ D.object [ P._type "image/svg+xml"
+                   , P.width "500px"
+                   , P.height "500px"
+                   , P.unsafeMkProps "data" $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> transfer.tokenId <> ".svg"
+                   ] []
+        , D.div [P.className "kitty-info"]
+           [ D.div [P.className "kitty-info-headings"]
+               [ D.h6 [] [D.text $ "to: "]
+               , D.h6 [] [D.text $ "from: "]
+               , D.h6 [] [D.text $ "tokenId: "]
+               , D.h6 [] [D.text $ "transactionHash: "]
+               , D.h6 [] [D.text $ "blockNumber: "]
+               ]
+           , D.div [P.className "kitty-info-details"]
+               [ D.h5 [] [D.text $ show transfer.to]
+               , D.h5 [] [D.text $ show transfer.from]
+               , D.h5 [] [D.text $ show transfer.tokenId]
+               , D.h5 [] [D.text $ show transfer.txHash]
+               , D.h5 [] [D.text $ show transfer.blockNumber]
+               ]
+           ]
+         ]
+       ]
 
 type Kitten =
   { to :: Address
@@ -86,7 +97,6 @@ type TransferListState =
   { transfers :: List Kitten
   }
 
-
 data TransferListAction = KittenAction Int KittenAction
 
 _TransferListAction :: Prism' TransferListAction (Tuple Int KittenAction)
@@ -99,7 +109,7 @@ _transfers = lens _.transfers (_ { transfers = _ })
 
 transferListSpec :: forall eff props action. T.Spec eff TransferListState props TransferListAction
 transferListSpec = fold
-    [ cardList $ T.withState  \st ->
+    [ cardList $ T.withState \st ->
         T.focus _transfers _TransferListAction $
           T.foreach \_ -> transferSpec
     ]
@@ -107,8 +117,10 @@ transferListSpec = fold
     cardList :: T.Spec eff TransferListState props TransferListAction
              -> T.Spec eff TransferListState props TransferListAction
     cardList = over T._render \render dispatch p s c ->
-      [ D.div [] $
-        render dispatch p s c
+      [ D.div [P.className "kitty-container"]
+        [ D.div [P.className "kitty-list"] $
+          render dispatch p s c
+        ]
       ]
     listActions :: T.Spec eff TransferListState props TransferListAction
     listActions = T.simpleSpec T.defaultPerformAction T.defaultRender
@@ -143,5 +155,3 @@ kittyTransfersSpec =
                         else (unsafePartial fromJust $ unsnoc st.transfers).init
             _ <- liftEff <<< R.transformState this $ \st -> st {transfers = Cons ev $ st' }
             pure ContinueEvent
-
-
