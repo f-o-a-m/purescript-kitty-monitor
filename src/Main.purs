@@ -78,7 +78,7 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
                [ D.h5 [] [D.text $ show transfer.to]
                , D.h5 [] [D.text $ show transfer.from]
                , D.h5 [] [D.text $ show transfer.tokenId]
-               , D.h5 [] [D.text $ show transfer.txHash]
+               , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show transfer.txHash, P.target "_blank" ] [ D.text $ show transfer.txHash] ]
                , D.h5 [] [D.text $ show transfer.blockNumber]
                ]
            ]
