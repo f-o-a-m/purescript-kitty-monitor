@@ -7,8 +7,8 @@ import Contracts.KittyCore as KC
 import Control.Monad.Aff (Milliseconds(..), delay, launchAff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Reader (ask)
 import DOM (DOM)
 import DOM.HTML (window)
@@ -16,13 +16,16 @@ import DOM.HTML.Types (htmlDocumentToDocument)
 import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
-import Data.String as Str
 import Data.Array (fold)
+import Data.Either (Either(..), note)
+import Data.Formatter.Number (Formatter(..), format)
+import Data.Int (fromStringAs, hexadecimal, toNumber)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..), length, unsnoc)
 import Data.Maybe (Maybe(..), fromJust)
+import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3 (Address, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3)
+import Network.Ethereum.Web3 (Address, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3, unHex)
 import Partial.Unsafe (unsafePartial)
 import React as R
 import React.DOM as D
@@ -60,33 +63,41 @@ transferSpec :: forall eff props . T.Spec eff Kitten props KittenAction
 transferSpec = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render Kitten props KittenAction
-    render _ props transfer _ =
-      [ D.div [P.className "kitty-tile"]
-        [ D.img  [ P._type "image/svg+xml"
-                 , P.width "500px"
-                 , P.height "500px"
-                 , P.src $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> transfer.tokenId <> ".svg"
-                 ] []
-        , D.div [P.className "kitty-info"]
-           [ D.div [P.className "kitty-info-headings"]
-               [ D.h6 [] [D.text $ "to: "]
-               , D.h6 [] [D.text $ "from: "]
-               , D.h6 [] [D.text $ "tokenId: "]
-               , D.h6 [] [D.text $ "transactionHash: "]
-               , D.h6 [] [D.text $ "blockNumber: "]
-               ]
-           , D.div [P.className "kitty-info-details"]
-               [ D.h5 [] [D.text $ show transfer.to]
-               , D.h5 [] [D.text $ show transfer.from]
-               , D.h5 [] [D.text $ show transfer.tokenId]
-               , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show transfer.txHash, P.target "_blank" ]
-                               [ D.text $ shortenLink $ show transfer.txHash]
-                         ]
-               , D.h5 [] [D.text $ show transfer.blockNumber]
-               ]
-           ]
-         ]
-       ]
+    render _ props state _ =
+      let
+        blockNumber = mStringFormat do
+          int <- note "Error converting hex to int" $ fromStringAs hexadecimal $ unHex state.blockNumber
+          let num = toNumber int
+          pure $ format commaSeperate num
+      in
+        [ D.div [ P.className "kitty-tile"]
+          [ D.a [ P.className "kitty-pic", P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
+                [ D.img  [ P._type "image/svg+xml"
+                         , P.width "500px"
+                         , P.height "500px"
+                         , P.src $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> state.tokenId <> ".svg"
+                         ] []
+                ]
+          , D.div [P.className "kitty-info"]
+             [ D.div [P.className "kitty-info-headings"]
+                 [ D.h6 [] [D.text $ "to: "]
+                 , D.h6 [] [D.text $ "from: "]
+                 , D.h6 [] [D.text $ "tokenId: "]
+                 , D.h6 [] [D.text $ "transactionHash: "]
+                 , D.h6 [] [D.text $ "blockNumber: "]
+                 ]
+             , D.div [P.className "kitty-info-details"]
+                 [ D.h5 [] [D.text $ show state.to]
+                 , D.h5 [] [D.text $ show state.from]
+                 , D.h5 [] [D.text state.tokenId]
+                 , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
+                                 [ D.text $ shortenLink $ show state.txHash]
+                           ]
+                 , D.h5 [] [D.text blockNumber]
+                 ]
+             ]
+          ]
+        ]
 
 type Kitten =
   { to :: Address
@@ -143,7 +154,7 @@ kittyTransfersSpec =
           aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
           liftEff $ log "starting kitty watcher..."
           event aaAddress $ \(KC.Transfer t) -> do
-            liftAff $ delay (Milliseconds 25000.0)
+            liftAff $ delay (Milliseconds 15000.0)
             liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
             (Change change) <- ask
             let ev = { to: t.to
@@ -164,6 +175,16 @@ kittyTransfersSpec =
 
 shortenLink :: String -> String
 shortenLink str | Str.length str < 20 = str
-                 | otherwise  = shorten str
+                | otherwise  = shorten str
   where
     shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
+
+
+commaSeperate :: Formatter
+commaSeperate =
+  Formatter { comma: true, before: 0, after: 0, abbreviations: false, sign: false }
+
+
+mStringFormat :: Either String String -> String
+mStringFormat (Left a) = a
+mStringFormat (Right b) = b
