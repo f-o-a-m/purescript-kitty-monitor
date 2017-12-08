@@ -14,6 +14,7 @@
         "web3-generator",
         "tagged",
         "react",
-        "thermite"
+        "thermite",
+        "formatters"
     ]
 }
