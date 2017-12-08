@@ -16,6 +16,7 @@ import DOM.HTML.Types (htmlDocumentToDocument)
 import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
+import Data.String as Str
 import Data.Array (fold)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..), length, unsnoc)
@@ -78,7 +79,9 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
                [ D.h5 [] [D.text $ show transfer.to]
                , D.h5 [] [D.text $ show transfer.from]
                , D.h5 [] [D.text $ show transfer.tokenId]
-               , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show transfer.txHash, P.target "_blank" ] [ D.text $ show transfer.txHash] ]
+               , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show transfer.txHash, P.target "_blank" ]
+                               [ D.text $ shortenLink $ show transfer.txHash]
+                         ]
                , D.h5 [] [D.text $ show transfer.blockNumber]
                ]
            ]
@@ -155,3 +158,12 @@ kittyTransfersSpec =
                         else (unsafePartial fromJust $ unsnoc st.transfers).init
             _ <- liftEff <<< R.transformState this $ \st -> st {transfers = Cons ev $ st' }
             pure ContinueEvent
+
+
+-- Utils
+
+shortenLink :: String -> String
+shortenLink str | Str.length str < 20 = str
+                 | otherwise  = shorten str
+  where
+    shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
