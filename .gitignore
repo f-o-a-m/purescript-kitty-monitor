@@ -8,3 +8,4 @@ build/*
 .psc-package/*
 src/Contracts/*
 dist/
+.psc-ide-port
