@@ -61,11 +61,11 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
     render :: T.Render Kitten props KittenAction
     render _ props transfer _ =
       [ D.div [P.className "kitty-tile"]
-        [ D.object [ P._type "image/svg+xml"
-                   , P.width "500px"
-                   , P.height "500px"
-                   , P.unsafeMkProps "data" $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> transfer.tokenId <> ".svg"
-                   ] []
+        [ D.img  [ P._type "image/svg+xml"
+                 , P.width "500px"
+                 , P.height "500px"
+                 , P.src $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> transfer.tokenId <> ".svg"
+                 ] []
         , D.div [P.className "kitty-info"]
            [ D.div [P.className "kitty-info-headings"]
                [ D.h6 [] [D.text $ "to: "]
@@ -140,7 +140,7 @@ kittyTransfersSpec =
           aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
           liftEff $ log "starting kitty watcher..."
           event aaAddress $ \(KC.Transfer t) -> do
-            liftAff $ delay (Milliseconds 15000.0)
+            liftAff $ delay (Milliseconds 25000.0)
             liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
             (Change change) <- ask
             let ev = { to: t.to
