@@ -35,11 +35,17 @@
 .kitty-info {
   display: flex;
   flex: 0.75;
-  padding-left: 1rem;
+  position: relative;
+  left: -3em;
 }
 
 .kitty-info-headings {
   width: 70px;
+}
+
+.kitty-pic {
+  position: relative;
+  left: -4em;
 }
 
 .kitty-details {
