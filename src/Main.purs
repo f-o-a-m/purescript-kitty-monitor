@@ -22,7 +22,7 @@ import Data.Formatter.Number (Formatter(..), format)
 import Data.Int (fromStringAs, hexadecimal, toNumber)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..), length, unsnoc)
-import Data.Maybe (Maybe(..), fromJust)
+import Data.Maybe (Maybe(..), fromJust, maybe)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
 import Network.Ethereum.Web3 (Address, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3, unHex)
@@ -65,10 +65,11 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
     render :: T.Render Kitten props KittenAction
     render _ props state _ =
       let
-        blockNumber = mStringFormat do
-          int <- note "Error converting hex to int" $ fromStringAs hexadecimal $ unHex state.blockNumber
-          let num = toNumber int
-          pure $ format commaSeperate num
+        blockNumber =
+          unHex state.blockNumber
+          # fromStringAs hexadecimal
+          # map toNumber
+          # maybe "Error parsing hex" (format commaSeperate)
       in
         [ D.div [ P.className "kitty-tile"]
           [ D.a [ P.className "kitty-pic", P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
@@ -183,8 +184,3 @@ shortenLink str | Str.length str < 20 = str
 commaSeperate :: Formatter
 commaSeperate =
   Formatter { comma: true, before: 0, after: 0, abbreviations: false, sign: false }
-
-
-mStringFormat :: Either String String -> String
-mStringFormat (Left a) = a
-mStringFormat (Right b) = b
