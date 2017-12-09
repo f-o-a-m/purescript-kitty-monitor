@@ -10,6 +10,7 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Reader (ask)
+import Control.Monad.Trans.Class (lift)
 import DOM (DOM)
 import DOM.HTML (window)
 import DOM.HTML.Types (htmlDocumentToDocument)
@@ -17,15 +18,15 @@ import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold)
-import Data.Either (Either(..), note)
 import Data.Formatter.Number (Formatter(..), format)
 import Data.Int (fromStringAs, hexadecimal, toNumber)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..), length, unsnoc)
-import Data.Maybe (Maybe(..), fromJust, maybe)
+import Data.Maybe (Maybe(..), fromJust, isNothing, maybe)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3 (Address, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3, unHex)
+import Network.Ethereum.Web3 (Address, BigNumber, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3, unHex, unsafeToInt)
+import Network.Ethereum.Web3.Solidity (unUIntN)
 import Partial.Unsafe (unsafePartial)
 import React as R
 import React.DOM as D
@@ -52,18 +53,20 @@ type KittyState = Unit
 
 type KittyProps = Unit
 
-type KittenAction = Unit
+data KittenAction
+    = GetToBalance Address
+    | GetFromBalance Address
 
 appClass :: R.ReactClass KittyProps
 appClass = R.createClass kittyTransfersSpec
 
 --------------------------------------------------------------------------------
 
-transferSpec :: forall eff props . T.Spec eff Kitten props KittenAction
-transferSpec = T.simpleSpec T.defaultPerformAction render
+transferSpec :: forall eff props . T.Spec (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
+transferSpec = T.simpleSpec performAction render
   where
     render :: T.Render Kitten props KittenAction
-    render _ props state _ =
+    render dispatch props state _ =
       let
         blockNumber =
           unHex state.blockNumber
@@ -82,14 +85,24 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
           , D.div [P.className "kitty-info"]
              [ D.div [P.className "kitty-info-headings"]
                  [ D.h6 [] [D.text $ "to: "]
+                 , D.h6 [] [D.text $ "toBalance: "]
                  , D.h6 [] [D.text $ "from: "]
+                 , D.h6 [] [D.text $ "fromBalance: "]
                  , D.h6 [] [D.text $ "tokenId: "]
                  , D.h6 [] [D.text $ "transactionHash: "]
                  , D.h6 [] [D.text $ "blockNumber: "]
                  ]
              , D.div [P.className "kitty-info-details"]
                  [ D.h5 [] [D.text $ show state.to]
+                 , D.h5 (if isNothing state.toBalance then
+                          [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetToBalance state.to)]
+                         else [])
+                        [D.text $ maybe "Click for TO balance" (show <<< unsafeToInt) state.toBalance]
                  , D.h5 [] [D.text $ show state.from]
+                 , D.h5 (if isNothing state.fromBalance then
+                          [P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetFromBalance state.from)]
+                         else [])
+                        [D.text $ maybe "Click for FROM balance" (show <<< unsafeToInt) state.fromBalance]
                  , D.h5 [] [D.text state.tokenId]
                  , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
                                  [ D.text $ shortenLink $ show state.txHash]
@@ -100,12 +113,30 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
           ]
         ]
 
+    performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
+    performAction (GetToBalance toAddress) _ _ = do
+      let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
+      balance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest toAddress
+      lift $ liftEff $ log "Getting to balance..."
+      void $ T.modifyState $ _{toBalance = Just (unUIntN balance)}
+
+    performAction (GetFromBalance fromAddress) _ _ = do
+      let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
+      balance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest fromAddress
+      lift $ liftEff $ log "Getting to balance..."
+      void $ T.modifyState $ _{fromBalance = Just (unUIntN balance)}
+
+
+
+
 type Kitten =
   { to :: Address
   , from :: Address
   , tokenId :: String
   , txHash :: HexString
   , blockNumber :: HexString
+  , toBalance :: Maybe BigNumber
+  , fromBalance :: Maybe BigNumber
   }
 
 type TransferListState =
@@ -122,22 +153,22 @@ _TransferListAction = prism' (uncurry KittenAction) \ta ->
 _transfers :: Lens' TransferListState (List Kitten)
 _transfers = lens _.transfers (_ { transfers = _ })
 
-transferListSpec :: forall eff props action. T.Spec eff TransferListState props TransferListAction
+transferListSpec :: forall eff props action. T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
 transferListSpec = fold
     [ cardList $ T.withState \st ->
         T.focus _transfers _TransferListAction $
           T.foreach \_ -> transferSpec
     ]
   where
-    cardList :: T.Spec eff TransferListState props TransferListAction
-             -> T.Spec eff TransferListState props TransferListAction
+    cardList :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+             -> T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
     cardList = over T._render \render dispatch p s c ->
       [ D.div [P.className "kitty-container"]
         [ D.div [P.className "kitty-list"] $
           render dispatch p s c
         ]
       ]
-    listActions :: T.Spec eff TransferListState props TransferListAction
+    listActions :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
     listActions = T.simpleSpec T.defaultPerformAction T.defaultRender
 
 kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE | eff)
@@ -163,6 +194,8 @@ kittyTransfersSpec =
                      , tokenId: show t.tokenId
                      , txHash: change.transactionHash
                      , blockNumber: change.blockNumber
+                     , toBalance: Nothing
+                     , fromBalance: Nothing
                      }
             st  <- liftEff $ R.readState this
             let st' = if length st.transfers <= 10

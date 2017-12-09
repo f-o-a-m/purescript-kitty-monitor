@@ -54,7 +54,7 @@
 
 .kitty-info-details {
   position: relative;
-  bottom: -1.7em;
+  bottom: -0.8em;
   left: -4em;
 }
 
@@ -97,4 +97,9 @@
 
 .status-bar {
     padding: 50px 0px 0px 150px;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+    color: blue;
 }
