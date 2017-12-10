@@ -5,7 +5,7 @@
   padding: 0;
 }
 
-.kitty-container {
+.token-container {
   font-family: 'Open Sans', Arial, sans-serif;
   background-color: #6FCF97;
   display: flex;
@@ -13,13 +13,13 @@
   min-height: 100vh;
 }
 
-.kitty-list {
+.token-list {
   width: 80%;
   max-width: 800px;
 
 }
 
-.kitty-tile {
+.token-tile {
   width: 100%;
   background-color: white;
   border-radius: 35px;
@@ -32,27 +32,22 @@
   box-shadow: 0px 2px 30px rgba(0,0,0,0.15);
 }
 
-.kitty-info {
+.token-info {
   display: flex;
   flex: 0.75;
   position: relative;
-  left: -3em;
+  right: -3em;
 }
 
-.kitty-info-headings {
+.token-info-headings {
   width: 70px;
 }
 
-.kitty-pic {
-  position: relative;
-  left: -4em;
-}
-
-.kitty-details {
+.token-details {
   flex: 0.15;
 }
 
-.kitty-info-details {
+.token-info-details {
   position: relative;
   bottom: -0.8em;
   left: -4em;
