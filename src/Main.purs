@@ -84,30 +84,32 @@ transferSpec = T.simpleSpec performAction render
                 ]
           , D.div [P.className "kitty-info"]
              [ D.div [P.className "kitty-info-headings"]
-                 [ D.h6 [] [D.text $ "to: "]
-                 , D.h6 [] [D.text $ "toBalance: "]
-                 , D.h6 [] [D.text $ "from: "]
-                 , D.h6 [] [D.text $ "fromBalance: "]
-                 , D.h6 [] [D.text $ "tokenId: "]
-                 , D.h6 [] [D.text $ "transactionHash: "]
-                 , D.h6 [] [D.text $ "blockNumber: "]
+                 [ D.h6 [] [ D.text $ "to: " ]
+                 , D.h6 [] [ D.text $ "toBalance: " ]
+                 , D.h6 [] [ D.text $ "from: " ]
+                 , D.h6 [] [ D.text $ "fromBalance: " ]
+                 , D.h6 [] [ D.text $ "tokenId: " ]
+                 , D.h6 [] [ D.text $ "transactionHash: " ]
+                 , D.h6 [] [ D.text $ "blockNumber: " ]
                  ]
-             , D.div [P.className "kitty-info-details"]
-                 [ D.h5 [] [D.text $ show state.to]
+             , D.div [ P.className "kitty-info-details" ]
+                 [ D.h5 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show state.to, P.target "_blank" ]
+                                 [ D.text $ show state.to ] ]
                  , D.h5 (if isNothing state.toBalance then
-                          [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetToBalance state.to)]
+                           [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetToBalance state.to) ]
                          else [])
-                        [D.text $ maybe "Click for TO balance" (show <<< unsafeToInt) state.toBalance]
-                 , D.h5 [] [D.text $ show state.from]
+                        [ D.text $ maybe "Get TO balance" (show <<< unsafeToInt) state.toBalance ]
+                 , D.h5 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show state.from, P.target "_blank" ]
+                                 [D.text $ shortenLink $ show state.from] ]
                  , D.h5 (if isNothing state.fromBalance then
-                          [P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetFromBalance state.from)]
+                           [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetFromBalance state.from) ]
                          else [])
-                        [D.text $ maybe "Click for FROM balance" (show <<< unsafeToInt) state.fromBalance]
-                 , D.h5 [] [D.text state.tokenId]
+                        [D.text $ maybe "Get FROM balance" (show <<< unsafeToInt) state.fromBalance]
+                 , D.h5 [] [ D.text state.tokenId ]
                  , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
-                                 [ D.text $ shortenLink $ show state.txHash]
+                                 [ D.text $ show state.txHash]
                            ]
-                 , D.h5 [] [D.text blockNumber]
+                 , D.h5 [] [ D.text blockNumber ]
                  ]
              ]
           ]
@@ -206,6 +208,8 @@ kittyTransfersSpec =
 
 
 -- Utils
+
+
 
 shortenLink :: String -> String
 shortenLink str | Str.length str < 20 = str
