@@ -100,14 +100,14 @@ transferSpec = T.simpleSpec performAction render
                          else [])
                         [ D.text $ maybe "Get TO balance" (show <<< unsafeToInt) state.toBalance ]
                  , D.h5 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show state.from, P.target "_blank" ]
-                                 [D.text $ shortenLink $ show state.from] ]
+                                 [D.text $ show state.from] ]
                  , D.h5 (if isNothing state.fromBalance then
                            [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetFromBalance state.from) ]
                          else [])
                         [D.text $ maybe "Get FROM balance" (show <<< unsafeToInt) state.fromBalance]
                  , D.h5 [] [ D.text state.tokenId ]
                  , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
-                                 [ D.text $ show state.txHash]
+                                 [ D.text $ shortenLink $ show state.txHash]
                            ]
                  , D.h5 [] [ D.text blockNumber ]
                  ]
