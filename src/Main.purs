@@ -18,14 +18,13 @@ import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold)
-import Data.Formatter.Number (Formatter(..), format)
-import Data.Int (fromStringAs, hexadecimal, toNumber)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..), length, unsnoc)
-import Data.Maybe (Maybe(..), fromJust, isNothing, maybe)
+import Data.Maybe (Maybe(..), fromJust, maybe)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3 (Address, BigNumber, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, metamask, mkAddress, mkHexString, runWeb3, unHex, unsafeToInt)
+import Network.Ethereum.Web3 (Address, BigNumber, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, fromHexString, metamask, mkAddress, mkHexString, runWeb3)
+import Network.Ethereum.Web3.Api (eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Partial.Unsafe (unsafePartial)
 import React as R
@@ -53,9 +52,7 @@ type KittyState = Unit
 
 type KittyProps = Unit
 
-data KittenAction
-    = GetToBalance Address
-    | GetFromBalance Address
+data KittenAction = SelectUserAddress Address
 
 appClass :: R.ReactClass KittyProps
 appClass = R.createClass kittyTransfersSpec
@@ -63,18 +60,11 @@ appClass = R.createClass kittyTransfersSpec
 --------------------------------------------------------------------------------
 
 transferSpec :: forall eff props . T.Spec (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
-transferSpec = T.simpleSpec performAction render
+transferSpec = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render Kitten props KittenAction
     render dispatch props state _ =
-      let
-        blockNumber =
-          unHex state.blockNumber
-          # fromStringAs hexadecimal
-          # map toNumber
-          # maybe "Error parsing hex" (format commaSeperate)
-      in
-        [ D.div [ P.className "kitty-tile"]
+        [ D.div [ P.className "kitty-tile" ]
           [ D.a [ P.className "kitty-pic", P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
                 [ D.img  [ P._type "image/svg+xml"
                          , P.width "500px"
@@ -85,51 +75,30 @@ transferSpec = T.simpleSpec performAction render
           , D.div [P.className "kitty-info"]
              [ D.div [P.className "kitty-info-headings"]
                  [ D.h6 [] [ D.text $ "to: " ]
-                 , D.h6 [] [ D.text $ "toBalance: " ]
                  , D.h6 [] [ D.text $ "from: " ]
-                 , D.h6 [] [ D.text $ "fromBalance: " ]
                  , D.h6 [] [ D.text $ "tokenId: " ]
                  , D.h6 [] [ D.text $ "transactionHash: " ]
                  , D.h6 [] [ D.text $ "blockNumber: " ]
                  ]
              , D.div [ P.className "kitty-info-details" ]
-                 [ D.h5 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show state.to, P.target "_blank" ]
-                                 [ D.text $ show state.to ] ]
-                 , D.h5 (if isNothing state.toBalance then
-                           [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetToBalance state.to) ]
-                         else [])
-                        [ D.text $ maybe "Get TO balance" (show <<< unsafeToInt) state.toBalance ]
-                 , D.h5 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show state.from, P.target "_blank" ]
-                                 [D.text $ show state.from] ]
-                 , D.h5 (if isNothing state.fromBalance then
-                           [ P.className "cursor-pointer", P.onClick (\_ -> dispatch $ GetFromBalance state.from) ]
-                         else [])
-                        [D.text $ maybe "Get FROM balance" (show <<< unsafeToInt) state.fromBalance]
+                 [ D.h5 [ P.className "user-address-link", P.onClick (\_ -> dispatch $ SelectUserAddress state.to)  ] [ D.text $ show state.to ]
+                 , D.h5 [ P.className "user-address-link", P.onClick (\_ -> dispatch $ SelectUserAddress state.from)] [ D.text $ show state.from]
                  , D.h5 [] [ D.text state.tokenId ]
                  , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
                                  [ D.text $ shortenLink $ show state.txHash]
                            ]
-                 , D.h5 [] [ D.text blockNumber ]
+                 , D.h5 [] [ D.text $ show $ fromHexString $ state.blockNumber ]
                  ]
              ]
           ]
         ]
 
-    performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
-    performAction (GetToBalance toAddress) _ _ = do
-      let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
-      balance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest toAddress
-      lift $ liftEff $ log "Getting to balance..."
-      void $ T.modifyState $ _{toBalance = Just (unUIntN balance)}
-
-    performAction (GetFromBalance fromAddress) _ _ = do
-      let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
-      balance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest fromAddress
-      lift $ liftEff $ log "Getting to balance..."
-      void $ T.modifyState $ _{fromBalance = Just (unUIntN balance)}
-
-
-
+    -- performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
+    -- performAction (GetToBalance toAddress) _ _ = do
+    --   let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
+    --   balance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest toAddress
+    --   lift $ liftEff $ log "Getting to balance..."
+    --   void $ T.modifyState $ _{toBalance = Just (unUIntN balance)}
 
 type Kitten =
   { to :: Address
@@ -141,8 +110,15 @@ type Kitten =
   , fromBalance :: Maybe BigNumber
   }
 
+type UserInfo =
+  { address :: Address
+  , ethBalance :: BigNumber
+  , tokenBalance :: BigNumber
+  }
+
 type TransferListState =
   { transfers :: List Kitten
+  , userInfo :: Maybe UserInfo
   }
 
 data TransferListAction = KittenAction Int KittenAction
@@ -160,6 +136,8 @@ transferListSpec = fold
     [ cardList $ T.withState \st ->
         T.focus _transfers _TransferListAction $
           T.foreach \_ -> transferSpec
+    , userInfoBox
+    , listActions
     ]
   where
     cardList :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
@@ -170,12 +148,36 @@ transferListSpec = fold
           render dispatch p s c
         ]
       ]
-    listActions :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
-    listActions = T.simpleSpec T.defaultPerformAction T.defaultRender
+
+    userInfoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    userInfoBox = T.simpleSpec T.defaultPerformAction render
+      where
+        render dispatch props state _ =
+          maybe [] (\userInfo -> [ D.div [P.className "user-info"] $ userInfoDiv userInfo ]) state.userInfo
+
+        userInfoDiv userInfo =
+          [ D.h6 [] [ D.text $ "User: " <> show userInfo.address ]
+          , D.h6 [] [ D.text $ "Eth Balance: " <> show userInfo.ethBalance ]
+          , D.h6 [] [ D.text $ "Has " <> show userInfo.tokenBalance <> " kitties!" ]
+          ]
+
+    listActions :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    listActions = T.simpleSpec performAction T.defaultRender
+      where
+        performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+        performAction (KittenAction i (SelectUserAddress address)) _ _ = do
+          let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
+          kittyBalance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest address
+          ethBalance <- lift $ runWeb3 metamask $ eth_getBalance address Latest
+          lift $ liftEff $ log "Getting to balance..."
+          let userInfo = Just { address: address, tokenBalance: unUIntN kittyBalance, ethBalance: ethBalance }
+          void $ T.modifyState _{ userInfo = userInfo }
+        performAction _ _ _ = pure unit
+
 
 kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE | eff)
 kittyTransfersSpec =
-    let {spec} = T.createReactSpec transferListSpec (const $ pure {transfers: Nil})
+    let {spec} = T.createReactSpec transferListSpec (const $ pure {transfers: Nil, userInfo: Nothing})
     in spec {componentDidMount = monitorKitties}
   where
     monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE | eff)
@@ -216,8 +218,3 @@ shortenLink str | Str.length str < 20 = str
                 | otherwise  = shorten str
   where
     shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
-
-
-commaSeperate :: Formatter
-commaSeperate =
-  Formatter { comma: true, before: 0, after: 0, abbreviations: false, sign: false }
