@@ -111,7 +111,9 @@
 
 .user-info {
   position: fixed;
-  top:20px;
-  right:20px;
+  top: 0px;
+  right: 0px;
   background-color: white;
+  border-bottom-left-radius: 20px;
+  padding: 15px;
 }

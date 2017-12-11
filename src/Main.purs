@@ -17,10 +17,11 @@ import DOM.HTML.Types (htmlDocumentToDocument)
 import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
-import Data.Array (fold)
+import Data.Array (fold, replicate)
 import Data.Lens (Lens', Prism', lens, prism', over)
 import Data.List (List(..), length, unsnoc)
 import Data.Maybe (Maybe(..), fromJust, maybe)
+import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
 import Network.Ethereum.Web3 (Address, BigNumber, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, fromHexString, metamask, mkAddress, mkHexString, runWeb3)
@@ -156,8 +157,11 @@ transferListSpec = fold
           maybe [] (\userInfo -> [ D.div [P.className "user-info"] $ userInfoDiv userInfo ]) state.userInfo
 
         userInfoDiv userInfo =
-          [ D.h6 [] [ D.text $ "User: " <> show userInfo.address ]
-          , D.h6 [] [ D.text $ "Eth Balance: " <> show userInfo.ethBalance ]
+          [ D.h4 [] [ D.text "User Info" ]
+          , D.h6 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show userInfo.address, P.target "_blank"]
+                          [D.text $ "User: " <> (shortenLink $ show userInfo.address)]
+                    ]
+          , D.h6 [] [ D.text $ "Eth Balance: " <> (addDecimalPointAt 18 $ show userInfo.ethBalance) ]
           , D.h6 [] [ D.text $ "Has " <> show userInfo.tokenBalance <> " kitties!" ]
           ]
 
@@ -218,3 +222,13 @@ shortenLink str | Str.length str < 20 = str
                 | otherwise  = shorten str
   where
     shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
+
+addDecimalPointAt :: Int -> String -> String
+addDecimalPointAt decimalAmount stringyNum =
+  case strLength <= decimalAmount of
+    true -> "0." <> (fromCharArray $ replicate ltOrEDiff '0') <> stringyNum
+    false -> (Str.take gtDiff stringyNum) <> "." <> (Str.drop gtDiff stringyNum)
+  where
+    strLength = Str.length stringyNum
+    ltOrEDiff = decimalAmount - strLength
+    gtDiff = strLength - decimalAmount
