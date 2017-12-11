@@ -94,12 +94,6 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
           ]
         ]
 
-    -- performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
-    -- performAction (GetToBalance toAddress) _ _ = do
-    --   let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
-    --   balance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest toAddress
-    --   lift $ liftEff $ log "Getting to balance..."
-    --   void $ T.modifyState $ _{toBalance = Just (unUIntN balance)}
 
 type Kitten =
   { to :: Address
