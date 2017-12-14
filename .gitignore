@@ -6,4 +6,3 @@ output/*
 build/*
 *.#*
 .psc-package/*
-src/Contracts/*
