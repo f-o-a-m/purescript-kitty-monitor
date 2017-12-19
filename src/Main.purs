@@ -24,15 +24,17 @@ import Data.Maybe (Maybe(..), fromJust, maybe)
 import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3 (Address, BigNumber, CallMode(..), Change(..), ETH, EventAction(..), HexString, event, fromHexString, metamask, mkAddress, mkHexString, runWeb3)
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, event, eventFilter, fromHexString, metamask, mkAddress, mkHexString, runWeb3)
 import Network.Ethereum.Web3.Api (eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
+import Network.Ethereum.Web3.Types (BlockNumber)
 import Partial.Unsafe (unsafePartial)
 import React as R
 import React.DOM as D
 import React.DOM.Props as P
 import ReactDOM (render)
 import Thermite as T
+import Type.Proxy (Proxy(..))
 
 main :: forall eff. Eff (dom :: DOM | eff) Unit
 main = void (elm' >>= render ui)
@@ -88,7 +90,7 @@ transferSpec = T.simpleSpec T.defaultPerformAction render
                  , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
                                  [ D.text $ shortenLink $ show state.txHash]
                            ]
-                 , D.h5 [] [ D.text $ show $ fromHexString $ state.blockNumber ]
+                 , D.h5 [] [ D.text $ show $ state.blockNumber ]
                  ]
              ]
           ]
@@ -100,7 +102,7 @@ type Kitten =
   , from :: Address
   , tokenId :: String
   , txHash :: HexString
-  , blockNumber :: HexString
+  , blockNumber :: BlockNumber
   , toBalance :: Maybe BigNumber
   , fromBalance :: Maybe BigNumber
   }
@@ -164,7 +166,7 @@ transferListSpec = fold
       where
         performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
         performAction (KittenAction i (SelectUserAddress address)) _ _ = do
-          let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
+          let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97bead5deae237070f9587f8e7a266d"
           kittyBalance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest address
           ethBalance <- lift $ runWeb3 metamask $ eth_getBalance address Latest
           lift $ liftEff $ log "Getting to balance..."
@@ -184,10 +186,11 @@ kittyTransfersSpec =
       launchAff $ do
         delay (Milliseconds 1000.0)
         void $ runWeb3 metamask $ do
-          let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xC7af99Fe5513eB6710e6D5f44F9989dA40F27F26"
+          let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xc7af99fe5513eb6710e6d5f44f9989da40f27f26"
           aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
+          let transferFilter = eventFilter (Proxy :: Proxy KC.Transfer) aaAddress
           liftEff $ log "starting kitty watcher..."
-          event aaAddress $ \(KC.Transfer t) -> do
+          event transferFilter $ \(KC.Transfer t) -> do
             liftAff $ delay (Milliseconds 15000.0)
             liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
             (Change change) <- ask
