@@ -4,6 +4,10 @@
 
 arbitrary abi + ps-web3
 
+## What
+
+Hosted [here](https://f-o-a-m.github.io/foam.monitor/)
+
 ## Build instructions
 ```bash
 > npm i
