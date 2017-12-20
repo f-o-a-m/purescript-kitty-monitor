@@ -6,7 +6,9 @@ arbitrary abi + ps-web3
 
 ## What
 
-Hosted [here](https://f-o-a-m.github.io/foam.monitor/)
+[[https://github.com/f-o-a-m/purescript-kitty-monitor/blob/master/img/screenshot.png|alt=screenshot]]
+
+Hosted [here](https://f-o-a-m.github.io/purescript-kitty-monitor/)
 
 ## Build instructions
 ```bash
