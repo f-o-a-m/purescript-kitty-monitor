@@ -6,7 +6,7 @@
 
 ## What
 
-This app is automatically generated from the [crypto kitties](https://www.cryptokitties.co/) [abi](https://etherscan.io/address/0x06012c8cf97bead5deae237070f9587f8e7a266d) and displays the latest auctions.
+This app displays the latest [crypto kitties](https://www.cryptokitties.co/) auctions and is generated automatically from the [abi](https://etherscan.io/address/0x06012c8cf97bead5deae237070f9587f8e7a266d).
 
 ![screenshot](https://github.com/f-o-a-m/purescript-kitty-monitor/blob/master/screenshot.png)
 
