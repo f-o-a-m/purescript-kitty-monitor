@@ -6,7 +6,7 @@ arbitrary abi + ps-web3
 
 ## What
 
-[[https://github.com/f-o-a-m/purescript-kitty-monitor/blob/master/img/screenshot.png|alt=screenshot]]
+![screenshot](https://github.com/f-o-a-m/purescript-kitty-monitor/blob/master/screenshot.png)
 
 Hosted [here](https://f-o-a-m.github.io/purescript-kitty-monitor/)
 
