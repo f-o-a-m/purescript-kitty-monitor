@@ -9,6 +9,7 @@ import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.Eff.Now (NOW, now)
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans.Class (lift)
 import DOM (DOM)
@@ -18,13 +19,18 @@ import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold, replicate)
-import Data.Lens (Lens', Prism', lens, prism', over)
-import Data.List (List(..), length, unsnoc)
+import Data.DateTime.Instant (unInstant)
+import Data.Formatter.Number (Formatter(..), format)
+import Data.Int (toNumber)
+import Data.Lens (Lens', Prism', lens, over, prism')
+import Data.List (List(..), length, take, unsnoc)
 import Data.Maybe (Maybe(..), fromJust, maybe)
+import Data.Newtype (unwrap)
 import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, event, eventFilter, fromHexString, metamask, mkAddress, mkHexString, runWeb3)
+import Math ((%))
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3)
 import Network.Ethereum.Web3.Api (eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
@@ -116,6 +122,9 @@ type UserInfo =
 type TransferListState =
   { transfers :: List Kitten
   , userInfo :: Maybe UserInfo
+  , transferCount :: Number
+  , startTime :: Number
+  , transferRate :: Number
   }
 
 data TransferListAction = KittenAction Int KittenAction
@@ -125,15 +134,15 @@ _TransferListAction = prism' (uncurry KittenAction) \ta ->
   case ta of
     KittenAction i a -> Just (Tuple i a)
 
-_transfers :: Lens' TransferListState (List Kitten)
-_transfers = lens _.transfers (_ { transfers = _ })
+_firstTenTransfers :: Lens' TransferListState (List Kitten)
+_firstTenTransfers = lens (_.transfers >>> take 10) (_ { transfers = _ })
 
 transferListSpec :: forall eff props action. T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
 transferListSpec = fold
     [ cardList $ T.withState \st ->
-        T.focus _transfers _TransferListAction $
+        T.focus _firstTenTransfers _TransferListAction $
           T.foreach \_ -> transferSpec
-    , userInfoBox
+    , infoBox
     , listActions
     ]
   where
@@ -146,20 +155,43 @@ transferListSpec = fold
         ]
       ]
 
-    userInfoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
-    userInfoBox = T.simpleSpec T.defaultPerformAction render
+    infoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    infoBox = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
-          maybe [] (\userInfo -> [ D.div [P.className "user-info"] $ userInfoDiv userInfo ]) state.userInfo
+          maybe ([D.div [P.className "monitor-stats"] $ monitorStats state]) (\userInfo ->
+            [ D.div [P.className "monitor-stats"] $  monitorStats state <> userInfoDiv userInfo ]
+          ) state.userInfo
+
+        monitorStats state =
+          [ D.h2 [] [ D.text "Monitor Stats" ]
+          , D.h6 [] [ D.text $ "Transfers since start: " <> format countNumFormat state.transferCount ]
+          , D.h6 [] [ D.text $ "Avg transfers/minute: " <>
+                               if state.transferRate == zero
+                               then "calculating..."
+                               else format avgNumFormat state.transferRate
+                    ]
+          , D.h6 [] [ D.text $ "Biggest transfer since start: " <> "(erc20 only)"]
+          , D.h5 [] [ D.text $ "Click an address to get user info"]
+          ]
 
         userInfoDiv userInfo =
-          [ D.h4 [] [ D.text "User Info" ]
+          [ D.h2 [] [ D.text "User Info" ]
           , D.h6 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show userInfo.address, P.target "_blank"]
                           [D.text $ "User: " <> (shortenLink $ show userInfo.address)]
                     ]
           , D.h6 [] [ D.text $ "Eth Balance: " <> (addDecimalPointAt 18 $ show userInfo.ethBalance) ]
           , D.h6 [] [ D.text $ "Has " <> show userInfo.tokenBalance <> " kitties!" ]
           ]
+
+
+    monitorStats :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    monitorStats = T.simpleSpec T.defaultPerformAction render
+      where
+        render dispatch props state _ =
+          [D.div [P.className "monitor-stats"] [D.text $ show state.transferCount]]
+
+
 
     listActions :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
     listActions = T.simpleSpec performAction T.defaultRender
@@ -175,12 +207,13 @@ transferListSpec = fold
         performAction _ _ _ = pure unit
 
 
-kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE | eff)
+kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
 kittyTransfersSpec =
-    let {spec} = T.createReactSpec transferListSpec (const $ pure {transfers: Nil, userInfo: Nothing})
+    let {spec} = T.createReactSpec transferListSpec
+          (const $ pure {transfers: Nil, userInfo: Nothing, transferCount: zero, startTime: zero, transferRate: zero})
     in spec {componentDidMount = monitorKitties}
   where
-    monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE | eff)
+    monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
     monitorKitties this = void $ do
       props <- R.getProps this
       launchAff $ do
@@ -191,10 +224,12 @@ kittyTransfersSpec =
           let transferFilter = eventFilter (Proxy :: Proxy KC.Transfer) aaAddress
           liftEff $ log "starting kitty watcher..."
           event transferFilter $ \(KC.Transfer t) -> do
-            liftAff $ delay (Milliseconds 15000.0)
+            liftAff $ delay (Milliseconds 100.0)
             liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
             (Change change) <- ask
-            let ev = { to: t.to
+            st  <- liftEff $ R.readState this
+            time <- liftEff $ (unwrap <<< unInstant) <$> now
+            let transfer = { to: t.to
                      , from: t.from
                      , tokenId: show t.tokenId
                      , txHash: change.transactionHash
@@ -202,11 +237,24 @@ kittyTransfersSpec =
                      , toBalance: Nothing
                      , fromBalance: Nothing
                      }
-            st  <- liftEff $ R.readState this
-            let st' = if length st.transfers <= 10
-                        then st.transfers
-                        else (unsafePartial fromJust $ unsnoc st.transfers).init
-            _ <- liftEff <<< R.transformState this $ \st -> st {transfers = Cons ev $ st' }
+
+            let startTime' | st.startTime == zero = time
+                           | otherwise = st.startTime
+
+            let transferRate' | st.transferCount == zero = zero
+                              | st.transferCount % toNumber 10 == zero =
+                                  st.transferCount / ((time - st.startTime) / toNumber 60000)
+                              | otherwise = st.transferRate
+
+            let transfers' | length st.transfers <= 200 = st.transfers
+                           | otherwise = (unsafePartial fromJust $ unsnoc st.transfers).init
+
+            _ <- liftEff <<< R.transformState this $ \st -> st
+              { transfers = Cons transfer $ transfers'
+              , transferCount = st.transferCount + (toNumber 1)
+              , startTime = startTime'
+              , transferRate = transferRate'
+              }
             pure ContinueEvent
 
 
@@ -229,3 +277,9 @@ addDecimalPointAt decimalAmount stringyNum =
     strLength = Str.length stringyNum
     ltOrEDiff = decimalAmount - strLength
     gtDiff = strLength - decimalAmount
+
+avgNumFormat :: Formatter
+avgNumFormat = Formatter { comma: false, before: 0, after: 1, abbreviations: false, sign: false }
+
+countNumFormat :: Formatter
+countNumFormat = Formatter { comma: false, before: 0, after: 0, abbreviations: false, sign: false }

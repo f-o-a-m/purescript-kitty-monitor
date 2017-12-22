@@ -3,6 +3,8 @@
     "set": "web3-0.11.0",
     "source": "https://github.com/f-o-a-m/package-sets.git",
     "depends": [
+        "now",
+        "datetime",
         "prelude",
         "console",
         "errors",
