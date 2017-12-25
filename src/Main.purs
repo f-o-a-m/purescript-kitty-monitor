@@ -4,7 +4,7 @@ import Prelude
 
 import Contracts.CryptoKitties as CK
 import Contracts.KittyCore as KC
-import Control.Monad.Aff (Milliseconds(..), delay, launchAff)
+import Control.Monad.Aff (Aff, Milliseconds(..), delay, launchAff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
@@ -20,11 +20,13 @@ import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold, replicate)
 import Data.DateTime.Instant (unInstant)
+import Data.Foldable (maximum, maximumBy)
 import Data.Formatter.Number (Formatter(..), format)
 import Data.Int (toNumber)
 import Data.Lens (Lens', Prism', lens, over, prism')
 import Data.List (List(..), length, take, unsnoc)
-import Data.Maybe (Maybe(..), fromJust, maybe)
+import Data.Map as Map
+import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
 import Data.Newtype (unwrap)
 import Data.String (fromCharArray)
 import Data.String as Str
@@ -117,11 +119,13 @@ type UserInfo =
   { address :: Address
   , ethBalance :: BigNumber
   , tokenBalance :: BigNumber
+  , transferCount :: Number
   }
 
 type TransferListState =
   { transfers :: List Kitten
-  , userInfo :: Maybe UserInfo
+  , selectedUserInfo :: Maybe UserInfo
+  , userInfoMap :: Map.Map Address UserInfo
   , transferCount :: Number
   , startTime :: Number
   , transferRate :: Number
@@ -142,7 +146,7 @@ transferListSpec = fold
     [ cardList $ T.withState \st ->
         T.focus _firstTenTransfers _TransferListAction $
           T.foreach \_ -> transferSpec
-    , infoBox
+    , userInfoBox
     , listActions
     ]
   where
@@ -155,13 +159,13 @@ transferListSpec = fold
         ]
       ]
 
-    infoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
-    infoBox = T.simpleSpec T.defaultPerformAction render
+    userInfoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    userInfoBox = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
           maybe ([D.div [P.className "monitor-stats"] $ monitorStats state]) (\userInfo ->
             [ D.div [P.className "monitor-stats"] $  monitorStats state <> userInfoDiv userInfo ]
-          ) state.userInfo
+          ) state.selectedUserInfo
 
         monitorStats state =
           [ D.h2 [] [ D.text "Monitor Stats" ]
@@ -172,6 +176,15 @@ transferListSpec = fold
                                else format avgNumFormat state.transferRate
                     ]
           , D.h6 [] [ D.text $ "Biggest transfer since start: " <> "(erc20 only)"]
+          , D.h6 [] [ D.text $ maybe "waiting for xfers... "
+                                (\user -> show user.address <> " has most xfers with " <> format countNumFormat user.transferCount)
+                                (findMostTransfers state.userInfoMap)
+                    ]
+          , D.h6 [] [ D.text $ maybe "waiting for xfers... "
+                                (\user -> show user.address <> " is the biggest hodler with " <> show user.tokenBalance <> " kitties!")
+                                (findBiggestBalance state.userInfoMap)
+                    ]
+          , D.h6 [] [ D.text $ show (Map.size state.userInfoMap) <> " unique addresses have done transfers so far"]
           , D.h5 [] [ D.text $ "Click an address to get user info"]
           ]
 
@@ -197,20 +210,15 @@ transferListSpec = fold
     listActions = T.simpleSpec performAction T.defaultRender
       where
         performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
-        performAction (KittenAction i (SelectUserAddress address)) _ _ = do
-          let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97bead5deae237070f9587f8e7a266d"
-          kittyBalance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest address
-          ethBalance <- lift $ runWeb3 metamask $ eth_getBalance address Latest
-          lift $ liftEff $ log "Getting to balance..."
-          let userInfo = Just { address: address, tokenBalance: unUIntN kittyBalance, ethBalance: ethBalance }
-          void $ T.modifyState _{ userInfo = userInfo }
+        performAction (KittenAction i (SelectUserAddress userAddress)) _ state =
+          void $ T.modifyState _{ selectedUserInfo = Map.lookup userAddress state.userInfoMap }
         performAction _ _ _ = pure unit
 
 
 kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
 kittyTransfersSpec =
     let {spec} = T.createReactSpec transferListSpec
-          (const $ pure {transfers: Nil, userInfo: Nothing, transferCount: zero, startTime: zero, transferRate: zero})
+          (const $ pure {transfers: Nil, selectedUserInfo: Nothing, transferCount: zero, startTime: zero, transferRate: zero, userInfoMap: Map.empty})
     in spec {componentDidMount = monitorKitties}
   where
     monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
@@ -226,17 +234,18 @@ kittyTransfersSpec =
           event transferFilter $ \(KC.Transfer t) -> do
             liftAff $ delay (Milliseconds 100.0)
             liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
-            (Change change) <- ask
+            (Change change) <- ask -- Ask for Filter Changes
             st  <- liftEff $ R.readState this
             time <- liftEff $ (unwrap <<< unInstant) <$> now
+
             let transfer = { to: t.to
-                     , from: t.from
-                     , tokenId: show t.tokenId
-                     , txHash: change.transactionHash
-                     , blockNumber: change.blockNumber
-                     , toBalance: Nothing
-                     , fromBalance: Nothing
-                     }
+                           , from: t.from
+                           , tokenId: show t.tokenId
+                           , txHash: change.transactionHash
+                           , blockNumber: change.blockNumber
+                           , toBalance: Nothing
+                           , fromBalance: Nothing
+                           }
 
             let startTime' | st.startTime == zero = time
                            | otherwise = st.startTime
@@ -249,11 +258,14 @@ kittyTransfersSpec =
             let transfers' | length st.transfers <= 200 = st.transfers
                            | otherwise = (unsafePartial fromJust $ unsnoc st.transfers).init
 
+            userInfoMap' <- liftAff $ updateUserInfo aaAddress t.from =<< updateUserInfo aaAddress t.to st.userInfoMap
+
             _ <- liftEff <<< R.transformState this $ \st -> st
               { transfers = Cons transfer $ transfers'
               , transferCount = st.transferCount + (toNumber 1)
               , startTime = startTime'
               , transferRate = transferRate'
+              , userInfoMap = userInfoMap'
               }
             pure ContinueEvent
 
@@ -261,12 +273,26 @@ kittyTransfersSpec =
 -- Utils
 
 
+updateUserInfo :: forall eff. Address -> Address -> Map.Map Address UserInfo -> Aff ( eth :: ETH, console :: CONSOLE | eff) (Map.Map Address UserInfo)
+updateUserInfo  tokenContract userAddress userInfoMap = do
+  balance <- runWeb3 metamask $ KC.eth_balanceOf tokenContract Nothing Latest userAddress
+  ethBalance <- runWeb3 metamask $ eth_getBalance userAddress Latest
+  let updateUserValue userInfo = Just $
+        userInfo {ethBalance = ethBalance
+                 , tokenBalance = unUIntN balance
+                 , transferCount = userInfo.transferCount + toNumber 1
+                 }
+  if Map.member userAddress userInfoMap
+    then pure $ Map.update updateUserValue userAddress userInfoMap
+    else pure $ Map.insert userAddress { address: userAddress, ethBalance: ethBalance, tokenBalance: unUIntN balance, transferCount: toNumber 1} userInfoMap
+
 
 shortenLink :: String -> String
 shortenLink str | Str.length str < 20 = str
                 | otherwise  = shorten str
   where
     shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
+
 
 addDecimalPointAt :: Int -> String -> String
 addDecimalPointAt decimalAmount stringyNum =
@@ -278,8 +304,18 @@ addDecimalPointAt decimalAmount stringyNum =
     ltOrEDiff = decimalAmount - strLength
     gtDiff = strLength - decimalAmount
 
+
+findMostTransfers :: Map.Map Address UserInfo -> Maybe UserInfo
+findMostTransfers userInfoMap =
+  maximumBy (\u1 u2 -> compare u1.transferCount u2.transferCount) $ Map.values userInfoMap
+
+findBiggestBalance :: Map.Map Address UserInfo -> Maybe UserInfo
+findBiggestBalance userInfoMap =
+  maximumBy (\u1 u2 -> compare u1.tokenBalance u2.tokenBalance) $ Map.values userInfoMap
+
 avgNumFormat :: Formatter
 avgNumFormat = Formatter { comma: false, before: 0, after: 1, abbreviations: false, sign: false }
+
 
 countNumFormat :: Formatter
 countNumFormat = Formatter { comma: false, before: 0, after: 0, abbreviations: false, sign: false }
