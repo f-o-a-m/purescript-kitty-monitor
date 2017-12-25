@@ -125,7 +125,7 @@ type UserInfo =
 
 type TransferListState =
   { transfers :: List Kitten
-  , selectedUserInfo :: Maybe UserInfo
+  , selectedUser :: Maybe Address
   , userInfoMap :: Map.Map Address UserInfo
   , transferCount :: Number
   , startTime :: Number
@@ -164,7 +164,7 @@ transferListSpec = fold
     userInfoBox = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
-          [ D.div [P.className "monitor-stats"] $  monitorStats state <> userInfoDiv state.selectedUserInfo ]
+          [ D.div [P.className "monitor-stats"] $  monitorStats state <> userInfoDiv (state.selectedUser >>= flip Map.lookup state.userInfoMap) ]
 
 
 
@@ -219,14 +219,14 @@ transferListSpec = fold
       where
         performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
         performAction (KittenAction i (SelectUserAddress userAddress)) _ state =
-          void $ T.modifyState _{ selectedUserInfo = Map.lookup userAddress state.userInfoMap }
+          void $ T.modifyState _{ selectedUser = Just userAddress }
         performAction _ _ _ = pure unit
 
 
 kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
 kittyTransfersSpec =
     let {spec} = T.createReactSpec transferListSpec
-          (const $ pure {transfers: Nil, selectedUserInfo: Nothing, transferCount: zero, startTime: zero, transferRate: zero, userInfoMap: Map.empty})
+          (const $ pure {transfers: Nil, selectedUser: Nothing, transferCount: zero, startTime: zero, transferRate: zero, userInfoMap: Map.empty})
     in spec {componentDidMount = monitorKitties}
   where
     monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
