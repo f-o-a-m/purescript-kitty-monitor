@@ -164,9 +164,9 @@ transferListSpec = fold
     userInfoBox = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
-          maybe ([D.div [P.className "monitor-stats"] $ monitorStats state]) (\userInfo ->
-            [ D.div [P.className "monitor-stats"] $  monitorStats state <> userInfoDiv userInfo ]
-          ) state.selectedUserInfo
+          [ D.div [P.className "monitor-stats"] $  monitorStats state <> userInfoDiv state.selectedUserInfo ]
+
+
 
         monitorStats state =
           [ D.h2 [] [ D.text "Monitor Stats" ]
@@ -186,17 +186,19 @@ transferListSpec = fold
                                 (findBiggestBalance state.userInfoMap)
                     ]
           , D.h6 [] [ D.text $ show (Map.size state.userInfoMap) <> " unique addresses have done transfers so far"]
-          , D.h5 [] [ D.text $ "Click an address to get user info"]
           ]
 
-        userInfoDiv userInfo =
-          [ D.h2 [] [ D.text "User Info" ]
-          , D.h6 [] [ D.a [P.href $ "https://etherscan.io/address/" <> show userInfo.address, P.target "_blank"]
-                          [D.text $ "User: " <> (shortenLink $ show userInfo.address)]
-                    ]
-          , D.h6 [] [ D.text $ "Eth Balance: " <> (addDecimalPointAt 18 $ show userInfo.ethBalance) ]
-          , D.h6 [] [ D.text $ "Has " <> show userInfo.tokenBalance <> " kitties!" ]
-          ]
+        userInfoDiv :: Maybe UserInfo -> Array ReactElement
+        userInfoDiv mUserInfo =
+          case mUserInfo of
+          Nothing ->
+            [ D.h5 [] [ D.text $ "Click an address to get user info"] ]
+          Just userInfo ->
+            [ D.h2 [] [ D.text "User Info" ]
+            , D.h6 [] $ [ addressLink userInfo.address ]
+            , D.h6 [] [ D.text $ "Eth Balance: " <> (addDecimalPointAt 18 $ show userInfo.ethBalance) ]
+            , D.h6 [] [ D.text $ "Has " <> show userInfo.tokenBalance <> " kitties!" ]
+            ]
 
 
     monitorStats :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
