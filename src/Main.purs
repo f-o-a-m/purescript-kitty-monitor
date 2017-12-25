@@ -37,6 +37,7 @@ import Network.Ethereum.Web3.Api (eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
 import Partial.Unsafe (unsafePartial)
+import React (ReactElement)
 import React as R
 import React.DOM as D
 import React.DOM.Props as P
@@ -176,12 +177,12 @@ transferListSpec = fold
                                else format avgNumFormat state.transferRate
                     ]
           , D.h6 [] [ D.text $ "Biggest transfer since start: " <> "(erc20 only)"]
-          , D.h6 [] [ D.text $ maybe "waiting for xfers... "
-                                (\user -> show user.address <> " has most xfers with " <> format countNumFormat user.transferCount)
+          , D.h6 [] [ D.span' $ maybe [ D.text "waiting for xfers... " ]
+                                (\user -> [ addressLink user.address, D.text $ " has the most xfers with " <> format countNumFormat user.transferCount <> " so far!" ])
                                 (findMostTransfers state.userInfoMap)
                     ]
-          , D.h6 [] [ D.text $ maybe "waiting for xfers... "
-                                (\user -> show user.address <> " is the biggest hodler with " <> show user.tokenBalance <> " kitties!")
+          , D.h6 [] [ D.span' $ maybe [ D.text $ "waiting for xfers... " ]
+                                (\user -> [ addressLink user.address, D.text $ " is the biggest hodler with " <> show user.tokenBalance <> " kitties!" ])
                                 (findBiggestBalance state.userInfoMap)
                     ]
           , D.h6 [] [ D.text $ show (Map.size state.userInfoMap) <> " unique addresses have done transfers so far"]
@@ -293,6 +294,11 @@ shortenLink str | Str.length str < 20 = str
   where
     shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
 
+addressLink :: Address -> ReactElement
+addressLink address =
+   D.a [ P.href $ "https://etherscan.io/address/" <> show address, P.target "_blank" ]
+        [ D.text $ (shortenLink $ show address) ]
+
 
 addDecimalPointAt :: Int -> String -> String
 addDecimalPointAt decimalAmount stringyNum =
@@ -307,7 +313,14 @@ addDecimalPointAt decimalAmount stringyNum =
 
 findMostTransfers :: Map.Map Address UserInfo -> Maybe UserInfo
 findMostTransfers userInfoMap =
-  maximumBy (\u1 u2 -> compare u1.transferCount u2.transferCount) $ Map.values userInfoMap
+  case maxTransfersUser of
+    Nothing ->
+      Nothing
+    Just userInfo ->
+      if userInfo.transferCount < toNumber 2 then Nothing else Just userInfo
+  where
+    maxTransfersUser = maximumBy (\u1 u2 -> compare u1.transferCount u2.transferCount) $ Map.values userInfoMap
+
 
 findBiggestBalance :: Map.Map Address UserInfo -> Maybe UserInfo
 findBiggestBalance userInfoMap =
