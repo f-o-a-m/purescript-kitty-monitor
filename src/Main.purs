@@ -11,7 +11,6 @@ import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Eff.Now (NOW, now)
 import Control.Monad.Reader (ask)
-import Control.Monad.Trans.Class (lift)
 import DOM (DOM)
 import DOM.HTML (window)
 import DOM.HTML.Types (htmlDocumentToDocument)
@@ -20,13 +19,13 @@ import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold, replicate)
 import Data.DateTime.Instant (unInstant)
-import Data.Foldable (maximum, maximumBy)
+import Data.Foldable (maximumBy)
 import Data.Formatter.Number (Formatter(..), format)
 import Data.Int (toNumber)
 import Data.Lens (Lens', Prism', lens, over, prism')
 import Data.List (List(..), length, take, unsnoc)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromJust, fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromJust, maybe)
 import Data.Newtype (unwrap)
 import Data.String (fromCharArray)
 import Data.String as Str
@@ -121,6 +120,7 @@ type UserInfo =
   , ethBalance :: BigNumber
   , tokenBalance :: BigNumber
   , transferCount :: Number
+  , receiveCount :: Number
   }
 
 type TransferListState =
@@ -177,15 +177,20 @@ transferListSpec = fold
                                else format avgNumFormat state.transferRate
                     ]
           , D.h6 [] [ D.text $ "Biggest transfer since start: " <> "(erc20 only)"]
-          , D.h6 [] [ D.span' $ maybe [ D.text "waiting for xfers... " ]
-                                (\user -> [ addressLink user.address, D.text $ " has the most xfers with " <> format countNumFormat user.transferCount <> " so far!" ])
+          , D.h6 [] [ D.span' $ maybe [ D.text "Most xfers: waiting for more xfers... " ]
+                                (\user -> [ D.text "Most xfers: ", addressLink user.address, D.text $ " with " <> format countNumFormat user.transferCount <> " so far!" ])
                                 (findMostTransfers state.userInfoMap)
                     ]
-          , D.h6 [] [ D.span' $ maybe [ D.text $ "waiting for xfers... " ]
-                                (\user -> [ addressLink user.address, D.text $ " is the biggest hodler with " <> show user.tokenBalance <> " kitties!" ])
+          , D.h6 [] [ D.span' $ maybe [ D.text $ "Biggest Hodler: waiting for more xfers... " ]
+                                (\user -> [ D.text "Biggest Hodler: ", addressLink user.address, D.text $ " with " <> show user.tokenBalance <> " kitties!" ])
                                 (findBiggestBalance state.userInfoMap)
                     ]
-          , D.h6 [] [ D.text $ show (Map.size state.userInfoMap) <> " unique addresses have done transfers so far"]
+          , D.h6 [] [ Map.filter (\user -> user.transferCount > toNumber 0) state.userInfoMap
+                      # Map.size
+                      # show
+                      # flip (<>) " unique addresses have done transfers so far"
+                      # D.text
+                    ]
           ]
 
         userInfoDiv :: Maybe UserInfo -> Array ReactElement
@@ -261,7 +266,7 @@ kittyTransfersSpec =
             let transfers' | length st.transfers <= 200 = st.transfers
                            | otherwise = (unsafePartial fromJust $ unsnoc st.transfers).init
 
-            userInfoMap' <- liftAff $ updateUserInfo aaAddress t.from =<< updateUserInfo aaAddress t.to st.userInfoMap
+            userInfoMap' <- liftAff $ updateTransferer aaAddress t.from =<< updateReceiver aaAddress t.to st.userInfoMap
 
             _ <- liftEff <<< R.transformState this $ \st -> st
               { transfers = Cons transfer $ transfers'
@@ -276,18 +281,44 @@ kittyTransfersSpec =
 -- Utils
 
 
-updateUserInfo :: forall eff. Address -> Address -> Map.Map Address UserInfo -> Aff ( eth :: ETH, console :: CONSOLE | eff) (Map.Map Address UserInfo)
-updateUserInfo  tokenContract userAddress userInfoMap = do
-  balance <- runWeb3 metamask $ KC.eth_balanceOf tokenContract Nothing Latest userAddress
-  ethBalance <- runWeb3 metamask $ eth_getBalance userAddress Latest
+updateTransferer :: forall eff. Address -> Address -> Map.Map Address UserInfo -> Aff ( eth :: ETH, console :: CONSOLE | eff) (Map.Map Address UserInfo)
+updateTransferer  tokenContract transfererAddress users = do
+  balance <- runWeb3 metamask $ KC.eth_balanceOf tokenContract Nothing Latest transfererAddress
+  ethBalance <- runWeb3 metamask $ eth_getBalance transfererAddress Latest
   let updateUserValue userInfo = Just $
-        userInfo {ethBalance = ethBalance
+        userInfo { ethBalance = ethBalance
                  , tokenBalance = unUIntN balance
                  , transferCount = userInfo.transferCount + toNumber 1
                  }
-  if Map.member userAddress userInfoMap
-    then pure $ Map.update updateUserValue userAddress userInfoMap
-    else pure $ Map.insert userAddress { address: userAddress, ethBalance: ethBalance, tokenBalance: unUIntN balance, transferCount: toNumber 1} userInfoMap
+  if Map.member transfererAddress users
+    then pure $ Map.update updateUserValue transfererAddress users
+    else pure $ Map.insert transfererAddress
+      { address: transfererAddress
+      , ethBalance: ethBalance
+      , tokenBalance: unUIntN balance
+      , transferCount: toNumber 1
+      , receiveCount: toNumber 0
+      } users
+
+
+updateReceiver :: forall eff. Address -> Address -> Map.Map Address UserInfo -> Aff ( eth :: ETH, console :: CONSOLE | eff) (Map.Map Address UserInfo)
+updateReceiver  tokenContract receiverAddress users = do
+  balance <- runWeb3 metamask $ KC.eth_balanceOf tokenContract Nothing Latest receiverAddress
+  ethBalance <- runWeb3 metamask $ eth_getBalance receiverAddress Latest
+  let updateUserValue userInfo = Just $
+        userInfo { ethBalance = ethBalance
+                 , tokenBalance = unUIntN balance
+                 , receiveCount = userInfo.transferCount + toNumber 1
+                 }
+  if Map.member receiverAddress users
+    then pure $ Map.update updateUserValue receiverAddress users
+    else pure $ Map.insert receiverAddress
+      { address: receiverAddress
+      , ethBalance: ethBalance
+      , tokenBalance: unUIntN balance
+      , transferCount: toNumber 0
+      , receiveCount: toNumber 1
+      } users
 
 
 shortenLink :: String -> String
@@ -321,12 +352,12 @@ findMostTransfers userInfoMap =
     Just userInfo ->
       if userInfo.transferCount < toNumber 2 then Nothing else Just userInfo
   where
-    maxTransfersUser = maximumBy (\u1 u2 -> compare u1.transferCount u2.transferCount) $ Map.values userInfoMap
+    maxTransfersUser = maximumBy (\u1 u2 -> compare u1.transferCount u2.transferCount) userInfoMap
 
 
 findBiggestBalance :: Map.Map Address UserInfo -> Maybe UserInfo
 findBiggestBalance userInfoMap =
-  maximumBy (\u1 u2 -> compare u1.tokenBalance u2.tokenBalance) $ Map.values userInfoMap
+  maximumBy (\u1 u2 -> compare u1.tokenBalance u2.tokenBalance) userInfoMap
 
 avgNumFormat :: Formatter
 avgNumFormat = Formatter { comma: false, before: 0, after: 1, abbreviations: false, sign: false }
