@@ -1,6 +1,7 @@
 module Main where
 
 import Debug.Trace
+import Debug.Trace
 import Prelude
 
 import App.Config (ckAddress, tokenContract) as Config
@@ -44,8 +45,6 @@ import React.DOM.Props as P
 import ReactDOM (render)
 import Thermite as T
 import Type.Proxy (Proxy(..))
-
-import Debug.Trace
 
 
 main :: forall eff. Eff (dom :: DOM | eff) Unit
@@ -217,14 +216,12 @@ transferListSpec = fold
         performAction :: T.PerformAction (eth :: ETH | eff) TransferListState props TransferListAction
         performAction (KittenAction i (SelectUserAddress userAddress)) _ state =
           void $ T.modifyState _{ selectedUser = Just userAddress }
-        performAction _ _ _ = pure unit
 
 
 kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, avar :: AVAR | eff)
 kittyTransfersSpec =
     let {spec} = T.createReactSpec transferListSpec initialState
-    in spec { componentWillMount = populateTransfers
-            , componentDidMount = monitorKitties
+    in spec { componentDidMount = monitorKitties
             }
   where
 
@@ -234,30 +231,16 @@ kittyTransfersSpec =
                                 , userInfoMap: Map.empty
                                 }
 
-    populateTransfers :: R.ComponentWillMount props TransferListState (eth :: ETH, avar :: AVAR | eff)
-    populateTransfers this = void <<< launchAff $ runWeb3 metamask $ do
-      st <- liftEff $ R.readState this
-      tokAddress <- Config.tokenContract
-      currentBn <- eth_blockNumber
-      let startingBn = wrap <<< (\bn -> bn - (embed 10)) <<< unwrap $ currentBn
-          fltr = eventFilter (Proxy :: Proxy KC.Transfer) tokAddress # _fromBlock .~ BN startingBn
-                                                                     # _toBlock .~ BN currentBn
-      event fltr $ \t -> do
-        (Change c) <- ask
-        currentState <- liftEff $ R.readState this
-        newState <- insertTransfer currentState tokAddress (BN c.blockNumber) t
-        _ <- liftEff $ R.writeState this newState
-        pure ContinueEvent
-
     monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, avar :: AVAR | eff)
     monitorKitties this = void $ do
-      st <- R.readState this
       void <<< launchAff $ runWeb3 metamask $ do
           tokAddress <- Config.tokenContract
-          let transferFilter = eventFilter (Proxy :: Proxy KC.Transfer) tokAddress
-          event transferFilter $ \t -> do
-            (Change c) <- ask
-            traceA $ show c
+          currentBn <- eth_blockNumber
+          let startingBn = wrap <<< (\bn -> bn - embed 10) <<< unwrap $ currentBn
+              fltr = eventFilter (Proxy :: Proxy KC.Transfer) tokAddress # _fromBlock .~ BN startingBn
+          event fltr $ \t -> do
+            ch@(Change c) <- ask
+            st <- liftEff $ R.readState this
             newState <- insertTransfer st tokAddress (BN c.blockNumber) t
             _ <- liftEff $ R.writeState this newState
             pure ContinueEvent
