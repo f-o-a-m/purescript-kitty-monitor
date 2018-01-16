@@ -1,16 +1,18 @@
 module Main where
 
+import Debug.Trace
 import Prelude
 
+import App.Config (ckAddress, tokenContract) as Config
 import Contracts.CryptoKitties as CK
 import Contracts.KittyCore as KC
 import Control.Monad.Aff (Aff, Milliseconds(..), delay, launchAff)
+import Control.Monad.Aff.AVar (AVAR, makeEmptyVar, putVar, takeVar)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Console (CONSOLE, log)
-import Control.Monad.Eff.Now (NOW, now)
-import Control.Monad.Reader (ask)
+import Control.Monad.Reader (ask, ReaderT)
+import Control.Monad.Trans.Class (lift)
 import DOM (DOM)
 import DOM.HTML (window)
 import DOM.HTML.Types (htmlDocumentToDocument)
@@ -18,21 +20,20 @@ import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold, replicate)
-import Data.DateTime.Instant (unInstant)
 import Data.Foldable (maximumBy)
 import Data.Formatter.Number (Formatter(..), format)
-import Data.Int (toNumber)
+import Data.Lens ((.~))
 import Data.Lens (Lens', Prism', lens, over, prism')
 import Data.List (List(..), length, take, unsnoc)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, maybe)
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
 import Math ((%))
-import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3)
-import Network.Ethereum.Web3.Api (eth_getBalance)
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _toBlock, embed, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3)
+import Network.Ethereum.Web3.Api (eth_blockNumber, eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
 import Partial.Unsafe (unsafePartial)
@@ -43,6 +44,9 @@ import React.DOM.Props as P
 import ReactDOM (render)
 import Thermite as T
 import Type.Proxy (Proxy(..))
+
+import Debug.Trace
+
 
 main :: forall eff. Eff (dom :: DOM | eff) Unit
 main = void (elm' >>= render ui)
@@ -70,7 +74,7 @@ appClass = R.createClass kittyTransfersSpec
 
 --------------------------------------------------------------------------------
 
-transferSpec :: forall eff props . T.Spec (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
+transferSpec :: forall eff props . T.Spec (eth :: ETH | eff) Kitten props KittenAction
 transferSpec = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render Kitten props KittenAction
@@ -119,17 +123,15 @@ type UserInfo =
   { address :: Address
   , ethBalance :: BigNumber
   , tokenBalance :: BigNumber
-  , transferCount :: Number
-  , receiveCount :: Number
+  , transferCount :: Int
+  , receiveCount :: Int
   }
 
 type TransferListState =
   { transfers :: List Kitten
   , selectedUser :: Maybe Address
   , userInfoMap :: Map.Map Address UserInfo
-  , transferCount :: Number
-  , startTime :: Number
-  , transferRate :: Number
+  , transferCount :: Int
   }
 
 data TransferListAction = KittenAction Int KittenAction
@@ -142,7 +144,7 @@ _TransferListAction = prism' (uncurry KittenAction) \ta ->
 _firstTenTransfers :: Lens' TransferListState (List Kitten)
 _firstTenTransfers = lens (_.transfers >>> take 10) (_ { transfers = _ })
 
-transferListSpec :: forall eff props action. T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+transferListSpec :: forall eff props action. T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
 transferListSpec = fold
     [ cardList $ T.withState \st ->
         T.focus _firstTenTransfers _TransferListAction $
@@ -151,8 +153,8 @@ transferListSpec = fold
     , listActions
     ]
   where
-    cardList :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
-             -> T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    cardList :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
+             -> T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
     cardList = over T._render \render dispatch p s c ->
       [ D.div [P.className "kitty-container"]
         [ D.div [P.className "kitty-list"] $
@@ -160,7 +162,7 @@ transferListSpec = fold
         ]
       ]
 
-    userInfoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    userInfoBox :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
     userInfoBox = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
@@ -170,22 +172,17 @@ transferListSpec = fold
 
         monitorStats state =
           [ D.h2 [] [ D.text "Monitor Stats" ]
-          , D.h6 [] [ D.text $ "Transfers since start: " <> format countNumFormat state.transferCount ]
-          , D.h6 [] [ D.text $ "Avg transfers/minute: " <>
-                               if state.transferRate == zero
-                               then "calculating..."
-                               else format avgNumFormat state.transferRate
-                    ]
+          , D.h6 [] [ D.text $ "Transfers since start: " <> show state.transferCount ]
           , D.h6 [] [ D.text $ "Biggest transfer since start: " <> "(erc20 only)"]
           , D.h6 [] [ D.span' $ maybe [ D.text "Most xfers: waiting for more xfers... " ]
-                                (\user -> [ D.text "Most xfers: ", addressLink user.address, D.text $ " with " <> format countNumFormat user.transferCount <> " so far!" ])
+                                (\user -> [ D.text "Most xfers: ", addressLink user.address, D.text $ " with " <> show user.transferCount <> " so far!" ])
                                 (findMostTransfers state.userInfoMap)
                     ]
           , D.h6 [] [ D.span' $ maybe [ D.text $ "Biggest Hodler: waiting for more xfers... " ]
                                 (\user -> [ D.text "Biggest Hodler: ", addressLink user.address, D.text $ " with " <> show user.tokenBalance <> " kitties!" ])
                                 (findBiggestBalance state.userInfoMap)
                     ]
-          , D.h6 [] [ Map.filter (\user -> user.transferCount > toNumber 0) state.userInfoMap
+          , D.h6 [] [ Map.filter (\user -> user.transferCount > 0) state.userInfoMap
                       # Map.size
                       # show
                       # flip (<>) " unique addresses have done transfers so far"
@@ -206,7 +203,7 @@ transferListSpec = fold
             ]
 
 
-    monitorStats :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    monitorStats :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
     monitorStats = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
@@ -214,81 +211,96 @@ transferListSpec = fold
 
 
 
-    listActions :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    listActions :: T.Spec (eth :: ETH| eff) TransferListState props TransferListAction
     listActions = T.simpleSpec performAction T.defaultRender
       where
-        performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+        performAction :: T.PerformAction (eth :: ETH | eff) TransferListState props TransferListAction
         performAction (KittenAction i (SelectUserAddress userAddress)) _ state =
           void $ T.modifyState _{ selectedUser = Just userAddress }
         performAction _ _ _ = pure unit
 
 
-kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
+kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, avar :: AVAR | eff)
 kittyTransfersSpec =
-    let {spec} = T.createReactSpec transferListSpec
-          (const $ pure {transfers: Nil, selectedUser: Nothing, transferCount: zero, startTime: zero, transferRate: zero, userInfoMap: Map.empty})
-    in spec {componentDidMount = monitorKitties}
+    let {spec} = T.createReactSpec transferListSpec initialState
+    in spec { componentWillMount = populateTransfers
+            , componentDidMount = monitorKitties
+            }
   where
-    monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE, now :: NOW | eff)
+
+    initialState = const $ pure { transfers: Nil
+                                , selectedUser: Nothing
+                                , transferCount: zero
+                                , userInfoMap: Map.empty
+                                }
+
+    populateTransfers :: R.ComponentWillMount props TransferListState (eth :: ETH, avar :: AVAR | eff)
+    populateTransfers this = void <<< launchAff $ runWeb3 metamask $ do
+      st <- liftEff $ R.readState this
+      tokAddress <- Config.tokenContract
+      currentBn <- eth_blockNumber
+      let startingBn = wrap <<< (\bn -> bn - (embed 10)) <<< unwrap $ currentBn
+          fltr = eventFilter (Proxy :: Proxy KC.Transfer) tokAddress # _fromBlock .~ BN startingBn
+                                                                     # _toBlock .~ BN currentBn
+      event fltr $ \t -> do
+        (Change c) <- ask
+        currentState <- liftEff $ R.readState this
+        newState <- insertTransfer currentState tokAddress (BN c.blockNumber) t
+        _ <- liftEff $ R.writeState this newState
+        pure ContinueEvent
+
+    monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, avar :: AVAR | eff)
     monitorKitties this = void $ do
-      props <- R.getProps this
-      launchAff $ do
-        delay (Milliseconds 1000.0)
-        void $ runWeb3 metamask $ do
-          let ckAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0xc7af99fe5513eb6710e6d5f44f9989da40f27f26"
-          aaAddress <- CK.eth_nonFungibleContract ckAddress Nothing Latest
-          let transferFilter = eventFilter (Proxy :: Proxy KC.Transfer) aaAddress
-          liftEff $ log "starting kitty watcher..."
-          event transferFilter $ \(KC.Transfer t) -> do
-            liftAff $ delay (Milliseconds 100.0)
-            liftEff <<< log $ "Looking for Kitten: " <> show t.tokenId
-            (Change change) <- ask -- Ask for Filter Changes
-            st  <- liftEff $ R.readState this
-            time <- liftEff $ (unwrap <<< unInstant) <$> now
-
-            let transfer = { to: t.to
-                           , from: t.from
-                           , tokenId: show t.tokenId
-                           , txHash: change.transactionHash
-                           , blockNumber: change.blockNumber
-                           , toBalance: Nothing
-                           , fromBalance: Nothing
-                           }
-
-            let startTime' | st.startTime == zero = time
-                           | otherwise = st.startTime
-
-            let transferRate' | st.transferCount == zero = zero
-                              | st.transferCount % toNumber 10 == zero =
-                                  st.transferCount / ((time - st.startTime) / toNumber 60000)
-                              | otherwise = st.transferRate
-
-            let transfers' | length st.transfers <= 200 = st.transfers
-                           | otherwise = (unsafePartial fromJust $ unsnoc st.transfers).init
-
-            userInfoMap' <- liftAff $ updateTransferer aaAddress t.from =<< updateReceiver aaAddress t.to st.userInfoMap
-
-            _ <- liftEff <<< R.transformState this $ \st -> st
-              { transfers = Cons transfer $ transfers'
-              , transferCount = st.transferCount + (toNumber 1)
-              , startTime = startTime'
-              , transferRate = transferRate'
-              , userInfoMap = userInfoMap'
-              }
+      st <- R.readState this
+      void <<< launchAff $ runWeb3 metamask $ do
+          tokAddress <- Config.tokenContract
+          let transferFilter = eventFilter (Proxy :: Proxy KC.Transfer) tokAddress
+          event transferFilter $ \t -> do
+            (Change c) <- ask
+            traceA $ show c
+            newState <- insertTransfer st tokAddress (BN c.blockNumber) t
+            _ <- liftEff $ R.writeState this newState
             pure ContinueEvent
+
+    insertTransfer :: forall eff1 . TransferListState -> Address -> ChainCursor -> KC.Transfer -> ReaderT Change (Web3 Metamask eff1) TransferListState
+    insertTransfer st tokAddress c (KC.Transfer t) = do
+      (Change change) <- ask -- Ask for Filter Changes
+      let transfer = { to: t.to
+                     , from: t.from
+                     , tokenId: show t.tokenId
+                     , txHash: change.transactionHash
+                     , blockNumber: change.blockNumber
+                     , toBalance: Nothing
+                     , fromBalance: Nothing
+                     }
+
+      let transfers' | length st.transfers <= 20 = st.transfers
+                     | otherwise = (unsafePartial fromJust $ unsnoc st.transfers).init
+
+      --userInfoMap' <- lift $ do
+      --  receiver <- updateReceiver Config.ckAddress t.to c st.userInfoMap
+      --  updateTransferer tokAddress t.from c receiver
+
+      pure  st { transfers = Cons transfer $ transfers'
+               , transferCount = st.transferCount + 1
+       --        , userInfoMap = userInfoMap'
+               }
 
 
 -- Utils
-
-
-updateTransferer :: forall eff. Address -> Address -> Map.Map Address UserInfo -> Aff ( eth :: ETH, console :: CONSOLE | eff) (Map.Map Address UserInfo)
-updateTransferer  tokenContract transfererAddress users = do
-  balance <- runWeb3 metamask $ KC.eth_balanceOf tokenContract Nothing Latest transfererAddress
-  ethBalance <- runWeb3 metamask $ eth_getBalance transfererAddress Latest
+updateTransferer :: forall eff.
+                    Address
+                 -> Address
+                 -> ChainCursor
+                 -> Map.Map Address UserInfo
+                 -> Web3 Metamask eff (Map.Map Address UserInfo)
+updateTransferer  tokenContract transfererAddress c users = do
+  balance <- KC.eth_balanceOf tokenContract Nothing c transfererAddress
+  ethBalance <- eth_getBalance transfererAddress c
   let updateUserValue userInfo = Just $
         userInfo { ethBalance = ethBalance
                  , tokenBalance = unUIntN balance
-                 , transferCount = userInfo.transferCount + toNumber 1
+                 , transferCount = userInfo.transferCount + 1
                  }
   if Map.member transfererAddress users
     then pure $ Map.update updateUserValue transfererAddress users
@@ -296,19 +308,23 @@ updateTransferer  tokenContract transfererAddress users = do
       { address: transfererAddress
       , ethBalance: ethBalance
       , tokenBalance: unUIntN balance
-      , transferCount: toNumber 1
-      , receiveCount: toNumber 0
+      , transferCount: 1
+      , receiveCount: 0
       } users
 
-
-updateReceiver :: forall eff. Address -> Address -> Map.Map Address UserInfo -> Aff ( eth :: ETH, console :: CONSOLE | eff) (Map.Map Address UserInfo)
-updateReceiver  tokenContract receiverAddress users = do
-  balance <- runWeb3 metamask $ KC.eth_balanceOf tokenContract Nothing Latest receiverAddress
-  ethBalance <- runWeb3 metamask $ eth_getBalance receiverAddress Latest
+updateReceiver :: forall eff.
+                  Address
+               -> Address
+               -> ChainCursor
+               -> Map.Map Address UserInfo
+               -> Web3 Metamask eff (Map.Map Address UserInfo)
+updateReceiver  tokenContract receiverAddress c users = do
+  balance <- KC.eth_balanceOf tokenContract Nothing c receiverAddress
+  ethBalance <- eth_getBalance receiverAddress c
   let updateUserValue userInfo = Just $
         userInfo { ethBalance = ethBalance
                  , tokenBalance = unUIntN balance
-                 , receiveCount = userInfo.transferCount + toNumber 1
+                 , receiveCount = userInfo.transferCount + 1
                  }
   if Map.member receiverAddress users
     then pure $ Map.update updateUserValue receiverAddress users
@@ -316,8 +332,8 @@ updateReceiver  tokenContract receiverAddress users = do
       { address: receiverAddress
       , ethBalance: ethBalance
       , tokenBalance: unUIntN balance
-      , transferCount: toNumber 0
-      , receiveCount: toNumber 1
+      , transferCount: 0
+      , receiveCount: 1
       } users
 
 
@@ -350,7 +366,7 @@ findMostTransfers userInfoMap =
     Nothing ->
       Nothing
     Just userInfo ->
-      if userInfo.transferCount < toNumber 2 then Nothing else Just userInfo
+      if userInfo.transferCount < 2 then Nothing else Just userInfo
   where
     maxTransfersUser = maximumBy (\u1 u2 -> compare u1.transferCount u2.transferCount) userInfoMap
 
@@ -361,7 +377,3 @@ findBiggestBalance userInfoMap =
 
 avgNumFormat :: Formatter
 avgNumFormat = Formatter { comma: false, before: 0, after: 1, abbreviations: false, sign: false }
-
-
-countNumFormat :: Formatter
-countNumFormat = Formatter { comma: false, before: 0, after: 0, abbreviations: false, sign: false }
