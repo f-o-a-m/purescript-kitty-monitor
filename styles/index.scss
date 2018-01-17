@@ -9,7 +9,8 @@
   font-family: 'Open Sans', Arial, sans-serif;
   background-color: #6FCF97;
   display: flex;
-  justify-content: center;
+  justify-content: left;
+  padding-left: 20px;
   min-height: 100vh;
 }
 
@@ -35,15 +36,27 @@
 .kitty-info {
   display: flex;
   flex: 0.75;
-  padding-left: 1rem;
+  position: relative;
+  left: -3em;
 }
 
 .kitty-info-headings {
   width: 70px;
 }
 
+.kitty-pic {
+  position: relative;
+  left: -4em;
+}
+
 .kitty-details {
   flex: 0.15;
+}
+
+.kitty-info-details {
+  position: relative;
+  bottom: -0.8em;
+  left: -4em;
 }
 
 .h5, .h6 {
@@ -85,4 +98,24 @@
 
 .status-bar {
     padding: 50px 0px 0px 150px;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+    color: blue;
+}
+
+.user-address-link {
+  cursor: pointer;
+  color: darkblue;
+}
+
+.monitor-stats {
+  position: fixed;
+  top: 0px;
+  right: 0px;
+  background-color: white;
+  border-bottom-left-radius: 20px;
+  padding: 15px;
+  min-width: 200px;
 }
