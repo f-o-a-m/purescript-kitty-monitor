@@ -205,7 +205,7 @@ kittyTransfersSpec =
             let st' = if length st.transfers <= 10
                         then st.transfers
                         else (unsafePartial fromJust $ unsnoc st.transfers).init
-            _ <- liftEff <<< R.transformState this $ \st -> st {transfers = Cons ev $ st' }
+            _ <- liftEff <<< R.transformState this $ \st'' -> st'' {transfers = Cons ev $ st' }
             pure ContinueEvent
 
 
@@ -215,9 +215,9 @@ kittyTransfersSpec =
 
 shortenLink :: String -> String
 shortenLink str | Str.length str < 20 = str
-                | otherwise  = shorten str
+                | otherwise  = short
   where
-    shorten str = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
+    short = Str.take 7 str <> "..." <> Str.drop (Str.length str - 5) str
 
 addDecimalPointAt :: Int -> String -> String
 addDecimalPointAt decimalAmount stringyNum =
