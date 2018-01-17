@@ -172,7 +172,6 @@ transferListSpec = fold
           lift $ liftEff $ log "Getting to balance..."
           let userInfo = Just { address: address, tokenBalance: unUIntN kittyBalance, ethBalance: ethBalance }
           void $ T.modifyState _{ userInfo = userInfo }
-        performAction _ _ _ = pure unit
 
 
 kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE | eff)
