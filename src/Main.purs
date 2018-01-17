@@ -128,7 +128,7 @@ _TransferListAction = prism' (uncurry KittenAction) \ta ->
 _transfers :: Lens' TransferListState (List Kitten)
 _transfers = lens _.transfers (_ { transfers = _ })
 
-transferListSpec :: forall eff props action. T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+transferListSpec :: forall eff props. T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
 transferListSpec = fold
     [ cardList $ T.withState \st ->
         T.focus _transfers _TransferListAction $
