@@ -61,8 +61,9 @@ appClass :: R.ReactClass KittyProps
 appClass = R.createClass kittyTransfersSpec
 
 --------------------------------------------------------------------------------
+type KittenEffects eff = (eth :: ETH, console :: CONSOLE | eff)
 
-transferSpec :: forall eff props . T.Spec (eth :: ETH, console :: CONSOLE | eff) Kitten props KittenAction
+transferSpec :: forall eff props . T.Spec (KittenEffects eff) Kitten props KittenAction
 transferSpec = T.simpleSpec T.defaultPerformAction render
   where
     render :: T.Render Kitten props KittenAction
@@ -128,7 +129,7 @@ _TransferListAction = prism' (uncurry KittenAction) \ta ->
 _transfers :: Lens' TransferListState (List Kitten)
 _transfers = lens _.transfers (_ { transfers = _ })
 
-transferListSpec :: forall eff props. T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+transferListSpec :: forall eff props. T.Spec (KittenEffects eff) TransferListState props TransferListAction
 transferListSpec = fold
     [ cardList $ T.withState \st ->
         T.focus _transfers _TransferListAction $
@@ -137,8 +138,8 @@ transferListSpec = fold
     , listActions
     ]
   where
-    cardList :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
-             -> T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    cardList :: T.Spec (KittenEffects eff) TransferListState props TransferListAction
+             -> T.Spec (KittenEffects eff) TransferListState props TransferListAction
     cardList = over T._render \render dispatch p s c ->
       [ D.div [P.className "kitty-container"]
         [ D.div [P.className "kitty-list"] $
@@ -146,7 +147,7 @@ transferListSpec = fold
         ]
       ]
 
-    userInfoBox :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    userInfoBox :: T.Spec (KittenEffects eff) TransferListState props TransferListAction
     userInfoBox = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
@@ -161,10 +162,10 @@ transferListSpec = fold
           , D.h6 [] [ D.text $ "Has " <> show userInfo.tokenBalance <> " kitties!" ]
           ]
 
-    listActions :: T.Spec (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+    listActions :: T.Spec (KittenEffects eff) TransferListState props TransferListAction
     listActions = T.simpleSpec performAction T.defaultRender
       where
-        performAction :: T.PerformAction (eth :: ETH, console :: CONSOLE | eff) TransferListState props TransferListAction
+        performAction :: T.PerformAction (KittenEffects eff) TransferListState props TransferListAction
         performAction (KittenAction i (SelectUserAddress address)) _ _ = do
           let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97bead5deae237070f9587f8e7a266d"
           kittyBalance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest address
@@ -174,12 +175,12 @@ transferListSpec = fold
           void $ T.modifyState _{ userInfo = userInfo }
 
 
-kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (eth :: ETH, console :: CONSOLE | eff)
+kittyTransfersSpec :: forall eff props. R.ReactSpec props TransferListState (KittenEffects eff)
 kittyTransfersSpec =
     let {spec} = T.createReactSpec transferListSpec (const $ pure {transfers: Nil, userInfo: Nothing})
     in spec {componentDidMount = monitorKitties}
   where
-    monitorKitties :: R.ComponentDidMount props TransferListState (eth :: ETH, console :: CONSOLE | eff)
+    monitorKitties :: R.ComponentDidMount props TransferListState (KittenEffects eff)
     monitorKitties this = void $ do
       props <- R.getProps this
       launchAff $ do
