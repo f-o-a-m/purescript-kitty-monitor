@@ -9,7 +9,8 @@ body, html {
   font-family: 'Open Sans', Arial, sans-serif;
   background-color: #6FCF97;
   display: flex;
-  justify-content: center;
+  justify-content: left;
+  padding-left: 20px;
   min-height: 100vh;
 }
 
@@ -54,6 +55,7 @@ body, html {
 
 .kitty-info-headings {
   position: absolute;
+  width: 0;
 }
 
 .kitty-pic {
@@ -127,13 +129,14 @@ body, html {
   text-overflow: ellipsis;
 }
 
-.user-info {
+.monitor-stats {
   position: fixed;
   top: 0px;
   right: 0px;
   background-color: white;
   border-bottom-left-radius: 20px;
   padding: 15px;
+  min-width: 200px;
 }
 
 .Image { 
