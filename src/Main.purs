@@ -24,7 +24,7 @@ import Data.Maybe (Maybe(..), fromJust, maybe)
 import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, event, eventFilter, fromHexString, metamask, mkAddress, mkHexString, runWeb3)
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3)
 import Network.Ethereum.Web3.Api (eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
