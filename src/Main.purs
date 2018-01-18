@@ -18,7 +18,8 @@ import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold, replicate)
-import Data.Lens (Lens', Prism', lens, prism', over)
+import Data.Either (Either(..))
+import Data.Lens (Lens', Prism', lens, prism, prism', over)
 import Data.List (List(..), length, unsnoc)
 import Data.Maybe (Maybe(..), fromJust, maybe)
 import Data.String (fromCharArray)
@@ -55,7 +56,9 @@ type KittyState = Unit
 
 type KittyProps = Unit
 
-data KittenAction = SelectUserAddress Address
+data KittenAction
+  = SelectUserAddress Address
+  | ImageStateChange ImageAction
 
 appClass :: R.ReactClass KittyProps
 appClass = R.createClass kittyTransfersSpec
@@ -63,39 +66,121 @@ appClass = R.createClass kittyTransfersSpec
 --------------------------------------------------------------------------------
 type KittenEffects eff = (eth :: ETH, console :: CONSOLE | eff)
 
-transferSpec :: forall eff props . T.Spec (KittenEffects eff) Kitten props KittenAction
-transferSpec = T.simpleSpec T.defaultPerformAction render
+type ImageState = 
+  { baseURL :: String
+  , loadTryCount :: Int
+  , loadStatus :: ImageLoadState
+  }
+
+data ImageLoadState = Loading | Loaded | Failed
+data ImageAction = LoadFailed | LoadSucceeded | RetryLoading
+
+initialImageState :: String -> ImageState
+initialImageState baseURL =  
+  { baseURL
+  , loadTryCount: 100
+  , loadStatus: Loading
+  }
+
+-- TODO: use P.onError once this PR is merged
+-- https://github.com/purescript-contrib/purescript-react/pull/133
+onError :: forall eff props state result.
+  (R.Event -> R.EventHandlerContext eff props state result) -> P.Props
+onError f = P.unsafeMkProps "onError" (R.handle f)
+
+imageSpec :: forall eff props . T.Spec (KittenEffects eff) ImageState props ImageAction
+imageSpec = T.simpleSpec performAction render
   where
-    render :: T.Render Kitten props KittenAction
-    render dispatch props state _ =
-        [ D.div [ P.className "kitty-tile" ]
-          [ D.a [ P.className "kitty-pic", P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
-                [ D.img  [ P._type "image/svg+xml"
-                         , P.width "500px"
-                         , P.height "500px"
-                         , P.src $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> state.tokenId <> ".svg"
-                         ] []
-                ]
-          , D.div [P.className "kitty-info"]
-             [ D.div [P.className "kitty-info-headings"]
-                 [ D.h6 [] [ D.text $ "to: " ]
-                 , D.h6 [] [ D.text $ "from: " ]
-                 , D.h6 [] [ D.text $ "tokenId: " ]
-                 , D.h6 [] [ D.text $ "transactionHash: " ]
-                 , D.h6 [] [ D.text $ "blockNumber: " ]
-                 ]
-             , D.div [ P.className "kitty-info-details" ]
-                 [ D.h5 [ P.className "user-address-link", P.onClick (\_ -> dispatch $ SelectUserAddress state.to)  ] [ D.text $ show state.to ]
-                 , D.h5 [ P.className "user-address-link", P.onClick (\_ -> dispatch $ SelectUserAddress state.from)] [ D.text $ show state.from]
-                 , D.h5 [] [ D.text state.tokenId ]
-                 , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
-                                 [ D.text $ shortenLink $ show state.txHash]
-                           ]
-                 , D.h5 [] [ D.text $ show $ state.blockNumber ]
-                 ]
-             ]
-          ]
+  performAction :: T.PerformAction (KittenEffects eff) ImageState props ImageAction
+  performAction action _ _ = void $ T.modifyState \s -> case action of
+    LoadFailed -> 
+      if s.loadTryCount > 0
+        then
+          s { loadTryCount = s.loadTryCount - 1}
+        else 
+          s { loadStatus = Failed }
+    LoadSucceeded ->
+      s { loadStatus = Loaded}
+    RetryLoading ->
+      initialImageState s.baseURL
+
+  render :: T.Render ImageState props ImageAction
+  render dispatch props state _ =
+    let 
+      classNameModifiers = case state.loadStatus of
+        Loading -> "Image--loading"
+        Loaded -> "Image--loaded"
+        Failed -> "Image--failed"
+    in
+      pure $ D.div
+        [ P.className ("Image " <> classNameModifiers) ]
+        $ case state.loadStatus of
+            Loading -> 
+              renderImage dispatch state
+            Loaded -> 
+              renderImage dispatch state
+            Failed -> 
+              [ D.div
+                  [ P.className "Image-error"
+                  , P.onClick \_ -> dispatch $ RetryLoading
+                  ] 
+                  [] 
+              ]
+
+  renderImage dispatch state = 
+    pure $ D.img  
+      [ P.className "Image-img"
+      , P.src $ state.baseURL <> "try=" <> show state.loadTryCount
+      , onError \_ -> dispatch LoadFailed
+      , P.onLoad \_ -> dispatch LoadSucceeded
+      ]
+      []
+
+_KittenToImageAction :: Prism' KittenAction ImageAction
+_KittenToImageAction = prism ImageStateChange \ta ->
+  case ta of
+    ImageStateChange c -> Right c
+    _ -> Left ta
+
+_imageState :: Lens' Kitten ImageState
+_imageState = lens _.imageState (_ { imageState = _ })
+
+
+transferSpec :: forall eff props . T.Spec (KittenEffects eff) Kitten props KittenAction
+transferSpec = transferContainer $ fold
+  [ imageContainer $ T.focus _imageState _KittenToImageAction imageSpec
+  , T.simpleSpec T.defaultPerformAction renderTransfer
+  ]
+  where
+  transferContainer :: forall state action eff'. T.Spec eff' state props action -> T.Spec eff' state props action
+  transferContainer = over T._render \render d p s c ->
+    [ D.div [P.className "kitty-tile"] (render d p s c) ]
+  
+  imageContainer :: forall state action eff'. T.Spec eff' state props action -> T.Spec eff' state props action
+  imageContainer = over T._render \render d p s c ->
+    [ D.div [P.className "kitty-pic"] (render d p s c) ]
+
+  renderTransfer :: T.Render Kitten props KittenAction
+  renderTransfer dispatch props state _ =
+    [ D.div [P.className "kitty-info"]
+        [ D.div [P.className "kitty-info-headings"]
+            [ D.h6 [] [ D.text $ "to: " ]
+            , D.h6 [] [ D.text $ "from: " ]
+            , D.h6 [] [ D.text $ "tokenId: " ]
+            , D.h6 [] [ D.text $ "transactionHash: " ]
+            , D.h6 [] [ D.text $ "blockNumber: " ]
+            ]
+        , D.div [ P.className "kitty-info-details" ]
+            [ D.h5 [ P.className "user-address-link", P.onClick (\_ -> dispatch $ SelectUserAddress state.to)  ] [ D.text $ show state.to ]
+            , D.h5 [ P.className "user-address-link", P.onClick (\_ -> dispatch $ SelectUserAddress state.from)] [ D.text $ show state.from]
+            , D.h5 [] [ D.text state.tokenId ]
+            , D.h5 [] [ D.a [ P.href $ "https://etherscan.io/tx/" <> show state.txHash, P.target "_blank" ]
+                            [ D.text $ shortenLink $ show state.txHash]
+                      ]
+            , D.h5 [] [ D.text $ show $ state.blockNumber ]
+            ]
         ]
+    ]
 
 
 type Kitten =
@@ -106,6 +191,9 @@ type Kitten =
   , blockNumber :: BlockNumber
   , toBalance :: Maybe BigNumber
   , fromBalance :: Maybe BigNumber
+  
+  -- This value is used as part of kitten image url to fix #10
+  , imageState :: ImageState
   }
 
 type UserInfo =
@@ -143,7 +231,7 @@ transferListSpec = fold
     cardList = over T._render \render dispatch p s c ->
       [ D.div [P.className "kitty-container"]
         [ D.div [P.className "kitty-list"] $
-          render dispatch p s c
+            render dispatch p s c
         ]
       ]
 
@@ -166,6 +254,7 @@ transferListSpec = fold
     listActions = T.simpleSpec performAction T.defaultRender
       where
         performAction :: T.PerformAction (KittenEffects eff) TransferListState props TransferListAction
+        performAction (KittenAction i (ImageStateChange _)) _ _ = pure unit
         performAction (KittenAction i (SelectUserAddress address)) _ _ = do
           let kittyCoreAddress = unsafePartial fromJust $ mkAddress =<< mkHexString "0x06012c8cf97bead5deae237070f9587f8e7a266d"
           kittyBalance <- lift $ runWeb3 metamask $ KC.eth_balanceOf kittyCoreAddress Nothing Latest address
@@ -201,6 +290,7 @@ kittyTransfersSpec =
                      , blockNumber: change.blockNumber
                      , toBalance: Nothing
                      , fromBalance: Nothing
+                     , imageState: initialImageState $ "https://storage.googleapis.com/ck-kitty-image/0x06012c8cf97bead5deae237070f9587f8e7a266d/" <> show t.tokenId <> ".svg?"
                      }
             st  <- liftEff $ R.readState this
             let st' = if length st.transfers <= 10
