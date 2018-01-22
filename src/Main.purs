@@ -35,7 +35,7 @@ import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
 import Network.Ethereum.Web3.Api (eth_getBalance)
 import Math ((%))
-import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _toBlock, embed, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3)
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _toBlock, embed, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3, forkWeb3')
 import Network.Ethereum.Web3.Api (eth_blockNumber, eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
@@ -222,6 +222,7 @@ type TransferListState =
   , selectedUser :: Maybe Address
   , userInfoMap :: Map.Map Address UserInfo
   , transferCount :: Int
+  , blockNumber :: Maybe BlockNumber
   }
 
 data TransferListAction = KittenAction Int KittenAction
@@ -263,6 +264,7 @@ transferListSpec = fold
 
         monitorStats state =
           [ D.h2 [] [ D.text "Monitor Stats" ]
+          , D.h6 [] [ D.text $ "current block number: " <> maybe "loading ..." show state.blockNumber ]
           , D.h6 [] [ D.text $ "Transfers since start: " <> show state.transferCount ]
           , D.h6 [] [ D.text $ "Biggest transfer since start: " <> "(erc20 only)"]
           , D.h6 [] [ D.span' $ maybe [ D.text "Most xfers: waiting for more xfers... " ]
@@ -321,21 +323,37 @@ kittyTransfersSpec =
                                 , selectedUser: Nothing
                                 , transferCount: zero
                                 , userInfoMap: Map.empty
+                                , blockNumber: Nothing
                                 }
 
     monitorKitties :: R.ComponentDidMount props TransferListState (KittenEffects eff)
     monitorKitties this = void $ do
       void <<< launchAff $ runWeb3 metamask $ do
+          currentBn <- getAndSetBlockNumber this
+          pullBlockNumber this
           tokAddress <- Config.tokenContract
-          currentBn <- eth_blockNumber
           let startingBn = wrap <<< (\bn -> bn - embed 10) <<< unwrap $ currentBn
               fltr = eventFilter (Proxy :: Proxy KC.Transfer) tokAddress # _fromBlock .~ BN startingBn
           event fltr $ \t -> do
             ch@(Change c) <- ask
             st <- liftEff $ R.readState this
-            newState <- insertTransfer st tokAddress (BN c.blockNumber) t
-            _ <- liftEff $ R.writeState this newState
+            let  st' = st { blockNumber = max (Just c.blockNumber) st.blockNumber }
+            newState <- insertTransfer st' tokAddress (BN c.blockNumber) t
+            void $ liftEff $ R.writeState this newState
             pure ContinueEvent
+    
+    getAndSetBlockNumber this = do
+      num <- eth_blockNumber
+      traceAnyA { num }
+      _ <- liftEff $ R.transformState this (_ { blockNumber = Just num })
+      pure num
+    
+    pullBlockNumber this = 
+      void $ forkWeb3' metamask do
+        liftAff $ delay (Milliseconds 500.0)
+        _ <- getAndSetBlockNumber this
+        pullBlockNumber this
+
 
     insertTransfer :: forall eff1 . TransferListState -> Address -> ChainCursor -> KC.Transfer -> ReaderT Change (Web3 Metamask eff1) TransferListState
     insertTransfer st tokAddress c (KC.Transfer t) = do
