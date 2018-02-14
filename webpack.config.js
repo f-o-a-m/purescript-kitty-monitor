@@ -64,9 +64,9 @@ module.exports = {
         exclude: /node_modules/,
         query: {
           psc: 'psa',
-          src: ['.psc-package/**/**/src/*.purs', 'src/**/*.purs'],
-          pscIde: true,
-          pscPackage: true
+          src: ['./bower_components/*/src/**/*.purs', 'src/**/*.purs'],
+          pscIde: false,
+          pscPackage: false
         }
       },
       {

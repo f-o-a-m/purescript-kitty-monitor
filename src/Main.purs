@@ -1,19 +1,15 @@
 module Main where
 
-import Debug.Trace
-import Debug.Trace
 import Prelude
 
-import App.Config (ckAddress, tokenContract) as Config
-import Contracts.CryptoKitties as CK
+import App.Config (tokenContract) as Config
 import Contracts.KittyCore as KC
-import Control.Monad.Aff (Aff, Milliseconds(..), delay, launchAff)
-import Control.Monad.Aff.AVar (AVAR, makeEmptyVar, putVar, takeVar)
+import Control.Monad.Aff (Milliseconds(..), delay, launchAff, liftEff')
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Exception (throw)
 import Control.Monad.Reader (ask, ReaderT)
-import Control.Monad.Trans.Class (lift)
 import DOM (DOM)
 import DOM.HTML (window)
 import DOM.HTML.Types (htmlDocumentToDocument)
@@ -21,11 +17,10 @@ import DOM.HTML.Window (document)
 import DOM.Node.NonElementParentNode (getElementById)
 import DOM.Node.Types (Element, ElementId(..), documentToNonElementParentNode)
 import Data.Array (fold, replicate)
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Foldable (maximumBy)
-import Data.Formatter.Number (Formatter(..), format)
-import Data.Lens ((.~))
-import Data.Lens (Lens', Prism', lens, over, prism, prism')
+import Data.Formatter.Number (Formatter(..))
+import Data.Lens (Lens', Prism', lens, over, prism, prism', (.~))
 import Data.List (List(..), length, take, unsnoc)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromJust, maybe)
@@ -33,11 +28,8 @@ import Data.Newtype (unwrap, wrap)
 import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3.Api (eth_getBalance)
-import Math ((%))
-import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _toBlock, embed, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3, forkWeb3')
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _to, defaultTransactionOptions, embed, event, eventFilter, forkWeb3', metamask, runWeb3, unUIntN)
 import Network.Ethereum.Web3.Api (eth_blockNumber, eth_getBalance)
-import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
 import Partial.Unsafe (unsafePartial)
 import React (ReactElement)
@@ -296,8 +288,8 @@ transferListSpec = fold
             ]
 
 
-    monitorStats :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
-    monitorStats = T.simpleSpec T.defaultPerformAction render
+    monitorStatsSpec :: T.Spec (eth :: ETH | eff) TransferListState props TransferListAction
+    monitorStatsSpec = T.simpleSpec T.defaultPerformAction render
       where
         render dispatch props state _ =
           [D.div [P.className "monitor-stats"] [D.text $ show state.transferCount]]
@@ -307,7 +299,6 @@ transferListSpec = fold
       where
         performAction :: T.PerformAction (KittenEffects eff) TransferListState props TransferListAction
         performAction (KittenAction i (ImageStateChange _)) _ _ = pure unit
-        performAction (KittenAction i (SelectUserAddress address)) _ _ = pure unit
         performAction (KittenAction i (SelectUserAddress userAddress)) _ state =
           void $ T.modifyState _{ selectedUser = Just userAddress }
 
@@ -319,12 +310,12 @@ kittyTransfersSpec =
     in spec { componentDidMount = monitorKitties
             }
   where
-    initialState = const $ pure { transfers: Nil
-                                , selectedUser: Nothing
-                                , transferCount: zero
-                                , userInfoMap: Map.empty
-                                , blockNumber: Nothing
-                                }
+    initialState = { transfers: Nil
+                   , selectedUser: Nothing
+                   , transferCount: zero
+                   , userInfoMap: Map.empty
+                   , blockNumber: Nothing
+                   }
 
     monitorKitties :: R.ComponentDidMount props TransferListState (KittenEffects eff)
     monitorKitties this = void $ do
@@ -341,13 +332,12 @@ kittyTransfersSpec =
             newState <- insertTransfer st' tokAddress (BN c.blockNumber) t
             void $ liftEff $ R.writeState this newState
             pure ContinueEvent
-    
+
     getAndSetBlockNumber this = do
       num <- eth_blockNumber
-      traceAnyA { num }
       _ <- liftEff $ R.transformState this (_ { blockNumber = Just num })
       pure num
-    
+
     pullBlockNumber this = 
       void $ forkWeb3' metamask do
         liftAff $ delay (Milliseconds 500.0)
@@ -387,9 +377,11 @@ updateTransferer :: forall eff.
                  -> ChainCursor
                  -> Map.Map Address UserInfo
                  -> Web3 Metamask eff (Map.Map Address UserInfo)
-updateTransferer  tokenContract transfererAddress c users = do
-  balance <- KC.eth_balanceOf tokenContract Nothing c transfererAddress
-  ethBalance <- eth_getBalance transfererAddress c
+updateTransferer  tokenContract transfererAddress curs users = do
+  let balanceOpts = defaultTransactionOptions # _to .~ Just tokenContract
+  ebalance <- KC.eth_balanceOf balanceOpts curs {_owner: transfererAddress}
+  balance <- either (const $ liftAff <<< liftEff' <<< throw $ "No Owner: " <> show transfererAddress) pure ebalance
+  ethBalance <- eth_getBalance transfererAddress curs
   let updateUserValue userInfo = Just $
         userInfo { ethBalance = ethBalance
                  , tokenBalance = unUIntN balance
@@ -411,9 +403,11 @@ updateReceiver :: forall eff.
                -> ChainCursor
                -> Map.Map Address UserInfo
                -> Web3 Metamask eff (Map.Map Address UserInfo)
-updateReceiver  tokenContract receiverAddress c users = do
-  balance <- KC.eth_balanceOf tokenContract Nothing c receiverAddress
-  ethBalance <- eth_getBalance receiverAddress c
+updateReceiver  tokenContract receiverAddress curs users = do
+  let balanceOpts = defaultTransactionOptions # _to .~ Just tokenContract
+  ebalance <- KC.eth_balanceOf balanceOpts curs {_owner: receiverAddress}
+  balance <- either (const $ liftAff <<< liftEff' <<< throw $ "No Owner: " <> show receiverAddress) pure ebalance
+  ethBalance <- eth_getBalance receiverAddress curs
   let updateUserValue userInfo = Just $
         userInfo { ethBalance = ethBalance
                  , tokenBalance = unUIntN balance

@@ -1,0 +1,39 @@
+{
+  "name": "kitty-monitor",
+  "description": "A real time monitor for the crypto-kitties contracts.",
+  "main": "",
+  "authors": [
+    "Blinky <blinky3713@gmail.com>"
+  ],
+  "license": "MIT",
+  "homepage": "https://f-o-a-m.github.io/purescript-kitty-monitor/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/f-o-a-m/purescript-kitty-monitor.git"
+  },
+  "ignore": [
+    "*",
+    "!src/**/*"
+  ],
+  "dependencies": {
+    "purescript-errors": "v3.0.0",
+    "purescript-prelude": "v3.1.0",
+    "purescript-eff": "v3.1.0",
+    "purescript-now": "v3.0.0",
+    "purescript-datetime": "v3.4.0",
+    "purescript-console": "v3.0.0",
+    "purescript-node-process": "v5.0.0",
+    "purescript-spec": "v2.0.0",
+    "purescript-web3": "v0.15.3",
+    "purescript-web3-generator": "v0.15.2",
+    "purescript-react": "v4.4.0",
+    "purescript-thermite": "v5.0.0",
+    "purescript-tagged": "v2.0.0",
+    "purescript-formatters": "^2.1.0"
+  },
+  "devDependencies": {
+    "purescript-debug": "v3.0.0",
+    "purescript-spec": "v2.0.0",
+    "purescript-psci-support": "v3.0.0"
+  }
+}
