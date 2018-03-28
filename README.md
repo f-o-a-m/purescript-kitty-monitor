@@ -6,7 +6,7 @@
 
 ## What
 
-This app displays the latest [crypto kitties](https://www.cryptokitties.co/) that have been sold. You can view the contract information [on ethersca](https://etherscan.io/address/0x06012c8cf97bead5deae237070f9587f8e7a266d).
+This app displays the latest [crypto kitties](https://www.cryptokitties.co/) that have been sold. You can view the contract information on [etherscan](https://etherscan.io/address/0x06012c8cf97bead5deae237070f9587f8e7a266d).
 
 ![screenshot](https://github.com/f-o-a-m/purescript-kitty-monitor/blob/master/screenshot.png)
 
