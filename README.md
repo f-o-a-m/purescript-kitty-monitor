@@ -22,7 +22,7 @@ For more information, see the [this talk](https://www.youtube.com/watch?v=ozUlod
 - [metamask](https://chrome.google.com/webstore/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn?hl=en)
 - access to a main-net node where you can install filters
 - npm
-
+- you _might_ have to go to https://www.cryptokitties.co/marketplace once with your browser in order to get access to their image storage
 
 ## Build instructions
 ```bash
