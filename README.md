@@ -1,6 +1,6 @@
 # purescript-kitty-monitor
 
-[![Build status](https://travis-ci.org/f-o-a-m/foam.monitor.svg?branch=browser)](https://travis-ci.org/f-o-a-m/foam.master?branch=browser)
+[![Build status](https://travis-ci.org/f-o-a-m/foam.monitor.svg?branch=master)](https://travis-ci.org/f-o-a-m/foam.master?branch=browser)
 
 `purescript-web3` + kitties
 
