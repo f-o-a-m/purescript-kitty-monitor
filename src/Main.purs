@@ -33,10 +33,10 @@ import Data.Newtype (unwrap, wrap)
 import Data.String (fromCharArray)
 import Data.String as Str
 import Data.Tuple (Tuple(..), uncurry)
-import Network.Ethereum.Web3.Api (eth_getBalance)
 import Math ((%))
-import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _toBlock, embed, event, eventFilter, metamask, mkAddress, mkHexString, runWeb3, forkWeb3')
+import Network.Ethereum.Web3 (Address, BigNumber, ChainCursor(..), Change(..), ETH, EventAction(..), HexString, Metamask, Web3, _fromBlock, _toBlock, embed, event, eventFilter, forkWeb3', metamask, mkAddress, mkHexString, runWeb3)
 import Network.Ethereum.Web3.Api (eth_blockNumber, eth_getBalance)
+import Network.Ethereum.Web3.Api (eth_getBalance)
 import Network.Ethereum.Web3.Solidity (unUIntN)
 import Network.Ethereum.Web3.Types (BlockNumber)
 import Partial.Unsafe (unsafePartial)
@@ -374,8 +374,13 @@ kittyTransfersSpec =
       --userInfoMap' <- lift $ do
       --  receiver <- updateReceiver Config.ckAddress t.to c st.userInfoMap
       --  updateTransferer tokAddress t.from c receiver
+          
+          -- filter out kitties coming from 0x0000000000000000000000000000000000000000
+          transfers'' = if t.from == unsafePartial fromJust (mkAddress =<< mkHexString "0x0000000000000000000000000000000000000000")
+                          then transfers'
+                          else Cons transfer $ transfers'
 
-      pure  st { transfers = Cons transfer $ transfers'
+      pure  st { transfers = transfers''
                , transferCount = st.transferCount + 1
        --        , userInfoMap = userInfoMap'
                }
