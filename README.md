@@ -4,6 +4,10 @@
 
 `purescript-web3` + kitties
 
+## DEPRECATED
+
+This app uses old purescript and thermite, which is barely maintaind. Use [chanterelle-halogen-template](https://github.com/f-o-a-m/chanterelle-halogen-template/) instead, which is based on halogen.
+
 ## What
 
 This app displays the latest [crypto kitties](https://www.cryptokitties.co/) that have been sold. You can view the contract information on [etherscan](https://etherscan.io/address/0x06012c8cf97bead5deae237070f9587f8e7a266d).
